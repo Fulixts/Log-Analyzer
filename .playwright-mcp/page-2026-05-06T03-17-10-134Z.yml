@@ -1,0 +1,174 @@
+- generic [ref=e1]:
+  - generic [ref=e4]:
+    - banner [ref=e5]:
+      - generic [ref=e6]:
+        - generic [ref=e7]:
+          - img [ref=e9]
+          - generic [ref=e11]:
+            - generic [ref=e12]: Local Log Analyzer
+            - heading "McDonald's PXT Log Workspace" [level=1] [ref=e13]
+        - generic [ref=e14]:
+          - button "explorer" [ref=e15] [cursor=pointer]:
+            - img [ref=e16]
+            - text: explorer
+          - button "detalhes" [ref=e19] [cursor=pointer]:
+            - img [ref=e20]
+            - text: detalhes
+          - button "Selecionar pasta" [active] [ref=e23] [cursor=pointer]:
+            - img [ref=e24]
+            - text: Selecionar pasta
+      - generic [ref=e26]:
+        - generic [ref=e27]: "pasta: Logs-fixture"
+        - generic [ref=e111]: "arquivo: Logs-fixture/CA99011CSO10/NP6PosCore/_Np6PosCore_POS0010_20260417_DEBUG-001.log"
+        - generic [ref=e28]: "visíveis: 5"
+        - generic [ref=e29]: "selecionadas: 0"
+        - generic [ref=e30]: "ocultas: 0"
+    - generic [ref=e31]:
+      - complementary [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]: Explorer
+          - generic [ref=e35]: Árvore de pastas e logs
+        - generic [ref=e112]:
+          - button "Logs-fixture" [ref=e113] [cursor=pointer]:
+            - img [ref=e114]
+            - img [ref=e116]
+            - generic [ref=e118]: Logs-fixture
+          - generic [ref=e119]:
+            - generic [ref=e120]:
+              - button "CA99011CSO10" [ref=e121] [cursor=pointer]:
+                - img [ref=e122]
+                - img [ref=e124]
+                - generic [ref=e126]: CA99011CSO10
+              - generic [ref=e128]:
+                - button "NP6PosCore" [ref=e129] [cursor=pointer]:
+                  - img [ref=e130]
+                  - img [ref=e132]
+                  - generic [ref=e134]: NP6PosCore
+                - button "_Np6PosCore_POS0010_20260417_DEBUG-001.log" [ref=e136] [cursor=pointer]:
+                  - img [ref=e137]
+                  - generic [ref=e140]: _Np6PosCore_POS0010_20260417_DEBUG-001.log
+            - button "CA99011POS01" [ref=e142] [cursor=pointer]:
+              - img [ref=e143]
+              - img [ref=e145]
+              - generic [ref=e147]: CA99011POS01
+        - generic [ref=e43]: 2 arquivo(s) .log encontrado(s)
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - generic [ref=e48]:
+              - img [ref=e49]
+              - textbox "Buscar no log por texto, regex, módulo, origem, mensagem..." [ref=e52]
+            - generic [ref=e53]:
+              - button "smart" [ref=e54] [cursor=pointer]
+              - button "text" [ref=e55] [cursor=pointer]
+              - button "regex" [ref=e56] [cursor=pointer]
+              - button "salvar busca" [ref=e57] [cursor=pointer]:
+                - img [ref=e58]
+                - text: salvar busca
+          - generic [ref=e62]:
+            - button "INFO" [ref=e63] [cursor=pointer]
+            - button "DEBUG" [ref=e64] [cursor=pointer]
+            - button "WARNING" [ref=e65] [cursor=pointer]
+            - button "ERROR" [ref=e66] [cursor=pointer]
+            - button "UNKNOWN" [ref=e67] [cursor=pointer]
+            - button "limpar visão" [ref=e68] [cursor=pointer]
+            - button "só selecionadas" [ref=e69] [cursor=pointer]
+            - button "só marcadas" [ref=e70] [cursor=pointer]
+          - generic [ref=e71]:
+            - button "selecionar visíveis" [ref=e72] [cursor=pointer]:
+              - img [ref=e73]
+              - text: selecionar visíveis
+            - button "limpar seleção" [disabled] [ref=e76]:
+              - img [ref=e77]
+              - text: limpar seleção
+            - button "marcar" [disabled] [ref=e79]:
+              - img [ref=e80]
+              - text: marcar
+            - button "ocultar" [disabled] [ref=e82]:
+              - img [ref=e83]
+              - text: ocultar
+            - button "restaurar ocultas" [disabled] [ref=e88]:
+              - img [ref=e89]
+              - text: restaurar ocultas
+        - generic [ref=e95]:
+          - generic [ref=e96]:
+            - generic [ref=e148]: Ações / Linha
+            - generic [ref=e99]: Nível
+            - generic [ref=e149]: Tempo
+            - generic [ref=e150]: Módulo
+            - generic [ref=e151]: Origem
+            - generic [ref=e152]: Mensagem
+          - generic [ref=e153]:
+            - generic [ref=e154]:
+              - generic [ref=e155]:
+                - button [ref=e156] [cursor=pointer]:
+                  - img [ref=e157]
+                - button [ref=e159] [cursor=pointer]:
+                  - img [ref=e160]
+                - button [ref=e162] [cursor=pointer]:
+                  - img [ref=e163]
+                - generic [ref=e168]: "1"
+              - generic [ref=e170]: INFO
+              - generic [ref=e171]: "000010.253"
+              - generic [ref=e172]: "-"
+              - generic [ref=e173]: LogWriter.cpp@577
+              - generic [ref=e174]: "NP6 application has started. Build number: 36.4.0.166094."
+            - generic [ref=e175]:
+              - generic [ref=e176]:
+                - button [ref=e177] [cursor=pointer]:
+                  - img [ref=e178]
+                - button [ref=e180] [cursor=pointer]:
+                  - img [ref=e181]
+                - button [ref=e183] [cursor=pointer]:
+                  - img [ref=e184]
+                - generic [ref=e189]: "2"
+              - generic [ref=e191]: DEBUG
+              - generic [ref=e192]: "000010.183"
+              - generic [ref=e193]: npparstb.dll
+              - generic [ref=e194]: "npParseWorkflow.c{DEP}@617"
+              - generic [ref=e195]: "Legacy Debug Log [Before BC exec: [PosTSEThread] will be executed by NP6]"
+            - generic [ref=e196]:
+              - generic [ref=e197]:
+                - button [ref=e198] [cursor=pointer]:
+                  - img [ref=e199]
+                - button [ref=e201] [cursor=pointer]:
+                  - img [ref=e202]
+                - button [ref=e204] [cursor=pointer]:
+                  - img [ref=e205]
+                - generic [ref=e210]: "3"
+              - generic [ref=e212]: WARNING
+              - generic [ref=e213]: "000010.330"
+              - generic [ref=e214]: npbuscom.dll
+              - generic [ref=e215]: npPromotionRun.cpp@135
+              - generic [ref=e216]: Promotion product 8937 not found
+            - generic [ref=e217]:
+              - generic [ref=e218]:
+                - button [ref=e219] [cursor=pointer]:
+                  - img [ref=e220]
+                - button [ref=e222] [cursor=pointer]:
+                  - img [ref=e223]
+                - button [ref=e225] [cursor=pointer]:
+                  - img [ref=e226]
+                - generic [ref=e231]: "4"
+              - generic [ref=e233]: WARNING
+              - generic [ref=e234]: "000010.342"
+              - generic [ref=e235]: npremodule.dll
+              - generic [ref=e236]: "npreMsg.c{DEP}@2884"
+              - generic [ref=e237]: "Legacy Warning Log [[npreMsg] SendRecvTCPMsg resource WAY0300: TimeToOpenTCPConnection(0) TimeToSendTCPMsg(0) TimeToReceiveTCPMsg(0) TimeToShutdownTCPConnection(0) NumberOfOpenTCPConnections(1)]"
+            - generic [ref=e238]:
+              - generic [ref=e239]:
+                - button [ref=e240] [cursor=pointer]:
+                  - img [ref=e241]
+                - button [ref=e243] [cursor=pointer]:
+                  - img [ref=e244]
+                - button [ref=e246] [cursor=pointer]:
+                  - img [ref=e247]
+                - generic [ref=e252]: "5"
+              - generic [ref=e254]: ERROR
+              - generic [ref=e255]: "000010.361"
+              - generic [ref=e256]: npbuscom.dll
+              - generic [ref=e257]: npBusCompScreenCPP.cpp@2950
+              - generic [ref=e258]: Legacy Error Log [[BC][PosDisableFloatButtonsBySizeSelection][FAIL] - Button state is "regular"]
+  - button "Open Next.js Dev Tools" [ref=e106] [cursor=pointer]:
+    - img [ref=e107]
+  - alert [ref=e110]

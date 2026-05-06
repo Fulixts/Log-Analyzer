@@ -1,0 +1,88 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - img [ref=e10]
+          - generic [ref=e12]:
+            - generic [ref=e13]: Local Log Analyzer
+            - heading "McDonald's PXT Log Workspace" [level=1] [ref=e14]
+        - generic [ref=e16]: "pasta: Nenhuma pasta selecionada"
+      - generic [ref=e17]:
+        - button "Selecionar pasta" [ref=e18] [cursor=pointer]:
+          - img [ref=e19]
+          - text: Selecionar pasta
+        - button "Trocar pasta" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+          - text: Trocar pasta
+  - main [ref=e27]:
+    - complementary [ref=e28]:
+      - generic [ref=e29]:
+        - generic [ref=e30]:
+          - generic [ref=e31]:
+            - generic [ref=e32]: Explorer
+            - generic [ref=e33]: Arquivos encontrados na pasta local
+          - generic [ref=e34]: "0"
+        - generic [ref=e36]:
+          - img [ref=e37]
+          - generic [ref=e40]: Selecione uma pasta com arquivos .log.
+          - generic [ref=e41]: O app passa a listar os logs diretamente do diretório escolhido.
+      - generic [ref=e42]:
+        - generic [ref=e43]: Filtros salvos
+        - generic [ref=e44]:
+          - generic [ref=e45]:
+            - textbox "Nome" [ref=e46]
+            - textbox "Regex ou texto" [ref=e47]
+            - textbox [ref=e48]: "#22d3ee"
+          - generic [ref=e49]:
+            - button "Adicionar" [ref=e50] [cursor=pointer]:
+              - img [ref=e51]
+              - text: Adicionar
+            - button "Importar" [ref=e53] [cursor=pointer]:
+              - img [ref=e54]
+              - text: Importar
+            - button "Exportar" [disabled] [ref=e57]:
+              - img [ref=e58]
+              - text: Exportar
+          - generic [ref=e62]: Nenhum filtro salvo.
+    - generic [ref=e63]:
+      - generic [ref=e65]:
+        - generic [ref=e66]:
+          - img [ref=e67]
+          - textbox "Buscar por regex ou texto em message/module/source" [ref=e70]
+        - generic [ref=e71]:
+          - button "INFO" [ref=e72] [cursor=pointer]
+          - button "DEBUG" [ref=e73] [cursor=pointer]
+          - button "WARNING" [ref=e74] [cursor=pointer]
+          - button "ERROR" [ref=e75] [cursor=pointer]
+          - button "UNKNOWN" [ref=e76] [cursor=pointer]
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - generic [ref=e80]: Entradas filtradas
+          - generic [ref=e81]: "0"
+        - generic [ref=e82]:
+          - generic [ref=e83]: Errors
+          - generic [ref=e84]: "0"
+        - generic [ref=e85]:
+          - generic [ref=e86]: Warnings
+          - generic [ref=e87]: "0"
+        - generic [ref=e88]:
+          - generic [ref=e89]: Info
+          - generic [ref=e90]: "0"
+        - generic [ref=e91]:
+          - generic [ref=e92]: Delta médio
+          - generic [ref=e93]: "-"
+      - generic [ref=e96]:
+        - img [ref=e97]
+        - generic [ref=e99]: Selecione uma pasta local para começar
+        - generic [ref=e100]: O sistema agora lê os arquivos .log diretamente da pasta que você escolher, sem depender da pasta fixa do projeto.
+    - complementary [ref=e101]:
+      - generic [ref=e102]:
+        - generic [ref=e103]: Resumo do arquivo
+        - generic [ref=e104]: Nenhum arquivo carregado.
+      - generic [ref=e105]:
+        - generic [ref=e106]: Módulos com mais impacto
+        - generic [ref=e108]: Sem módulos suficientes para ranking.
+      - generic [ref=e109]:
+        - generic [ref=e110]: Alertas recentes
+        - generic [ref=e112]: Nenhum warning/error recente.

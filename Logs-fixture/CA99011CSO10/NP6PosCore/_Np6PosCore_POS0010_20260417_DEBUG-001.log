@@ -1,0 +1,5 @@
+INFO	20260315T000010.253+0100	9324		1004	LogWriter.cpp@577	NP6 application has started. Build number: 36.4.0.166094.
+DEBUG	20260315T000010.183+0100	9668	npparstb.dll	1010	npParseWorkflow.c{DEP}@617	Legacy Debug Log [Before BC exec: [PosTSEThread] will be executed by NP6]
+WARNING	20260315T000010.330+0100	9668	npbuscom.dll	2222	npPromotionRun.cpp@135	Promotion product 8937 not found
+WARNING	20260315T000010.342+0100	9668	npremodule.dll	1008	npreMsg.c{DEP}@2884	Legacy Warning Log [[npreMsg] SendRecvTCPMsg resource WAY0300: TimeToOpenTCPConnection(0) TimeToSendTCPMsg(0) TimeToReceiveTCPMsg(0) TimeToShutdownTCPConnection(0) NumberOfOpenTCPConnections(1)]
+ERROR	20260315T000010.361+0100	9668	npbuscom.dll	1007	npBusCompScreenCPP.cpp@2950	Legacy Error Log [[BC][PosDisableFloatButtonsBySizeSelection][FAIL] - Button state is "regular"]

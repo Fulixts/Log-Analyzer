@@ -1,0 +1,78 @@
+- generic [ref=e2]:
+  - button "Choose File" [ref=e3]
+  - button "Choose File" [ref=e4]
+  - generic [ref=e5]:
+    - banner [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - img [ref=e10]
+          - generic [ref=e12]:
+            - generic [ref=e13]: Local Log Analyzer
+            - heading "McDonald's PXT Log Workspace" [level=1] [ref=e14]
+        - generic [ref=e15]:
+          - button "explorer" [ref=e16]:
+            - img [ref=e17]
+            - text: explorer
+          - button "detalhes" [ref=e20]:
+            - img [ref=e21]
+            - text: detalhes
+          - button "Selecionar pasta" [active] [ref=e24]:
+            - img [ref=e25]
+            - text: Selecionar pasta
+      - generic [ref=e27]:
+        - generic [ref=e28]: "pasta: Nenhuma pasta selecionada"
+        - generic [ref=e29]: "visíveis: 0"
+        - generic [ref=e30]: "selecionadas: 0"
+        - generic [ref=e31]: "ocultas: 0"
+    - generic [ref=e32]:
+      - complementary [ref=e33]:
+        - generic [ref=e34]:
+          - generic [ref=e35]: Explorer
+          - generic [ref=e36]: Árvore de pastas e logs
+        - generic [ref=e38]:
+          - img [ref=e39]
+          - generic [ref=e42]: Selecione uma pasta com logs.
+          - generic [ref=e43]: A estrutura será exibida como uma árvore expansível.
+        - generic [ref=e44]: 0 arquivo(s) .log encontrado(s)
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - generic [ref=e47]:
+            - generic [ref=e49]:
+              - img [ref=e50]
+              - textbox "Buscar no log por texto, regex, módulo, origem, mensagem..." [ref=e53]
+            - generic [ref=e54]:
+              - button "smart" [ref=e55]
+              - button "text" [ref=e56]
+              - button "regex" [ref=e57]
+              - button "salvar busca" [ref=e58]:
+                - img [ref=e59]
+                - text: salvar busca
+          - generic [ref=e63]:
+            - button "INFO" [ref=e64]
+            - button "DEBUG" [ref=e65]
+            - button "WARNING" [ref=e66]
+            - button "ERROR" [ref=e67]
+            - button "UNKNOWN" [ref=e68]
+            - button "limpar visão" [ref=e69]
+            - button "só selecionadas" [ref=e70]
+            - button "só marcadas" [ref=e71]
+          - generic [ref=e72]:
+            - button "selecionar visíveis" [disabled] [ref=e73]:
+              - img [ref=e74]
+              - text: selecionar visíveis
+            - button "limpar seleção" [disabled] [ref=e77]:
+              - img [ref=e78]
+              - text: limpar seleção
+            - button "marcar" [disabled] [ref=e80]:
+              - img [ref=e81]
+              - text: marcar
+            - button "ocultar" [disabled] [ref=e83]:
+              - img [ref=e84]
+              - text: ocultar
+            - button "restaurar ocultas" [disabled] [ref=e89]:
+              - img [ref=e90]
+              - text: restaurar ocultas
+        - generic [ref=e97]:
+          - img [ref=e98]
+          - generic [ref=e100]: Selecione uma pasta e depois um arquivo na árvore
+          - generic [ref=e101]: "O foco aqui é o log: a maior parte da tela agora fica reservada para leitura, rolagem e seleção do arquivo."

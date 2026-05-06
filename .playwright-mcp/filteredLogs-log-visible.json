@@ -1,0 +1,232 @@
+{
+  "file": "Logs/filteredLogs.log",
+  "folder": "Logs",
+  "searchTerm": "Promotion product 8937 not found",
+  "searchMode": "smart",
+  "levelFilter": [
+    "INFO",
+    "DEBUG",
+    "WARNING",
+    "ERROR",
+    "UNKNOWN"
+  ],
+  "activeFilters": [],
+  "lines": [
+    {
+      "id": 26,
+      "level": "WARNING",
+      "timestamp": "20260315T000000.330+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000000.330+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 31,
+      "level": "WARNING",
+      "timestamp": "20260315T000000.330+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000000.330+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 35,
+      "level": "WARNING",
+      "timestamp": "20260315T000000.330+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000000.330+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 811,
+      "level": "WARNING",
+      "timestamp": "20260315T000016.727+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000016.727+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 1625,
+      "level": "WARNING",
+      "timestamp": "20260315T000021.546+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000021.546+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 1835,
+      "level": "WARNING",
+      "timestamp": "20260315T000021.572+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000021.572+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 1855,
+      "level": "WARNING",
+      "timestamp": "20260315T000021.576+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000021.576+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 1863,
+      "level": "WARNING",
+      "timestamp": "20260315T000021.576+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000021.576+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 2215,
+      "level": "WARNING",
+      "timestamp": "20260315T000026.006+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000026.006+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 2837,
+      "level": "WARNING",
+      "timestamp": "20260315T000036.379+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000036.379+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 2846,
+      "level": "WARNING",
+      "timestamp": "20260315T000036.379+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000036.379+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 3389,
+      "level": "WARNING",
+      "timestamp": "20260315T000037.609+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000037.609+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 3717,
+      "level": "WARNING",
+      "timestamp": "20260315T000043.837+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000043.837+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 3722,
+      "level": "WARNING",
+      "timestamp": "20260315T000043.837+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000043.837+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 3726,
+      "level": "WARNING",
+      "timestamp": "20260315T000043.837+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000043.837+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 4749,
+      "level": "WARNING",
+      "timestamp": "20260315T000109.589+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000109.589+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 4754,
+      "level": "WARNING",
+      "timestamp": "20260315T000109.589+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000109.589+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 4758,
+      "level": "WARNING",
+      "timestamp": "20260315T000109.589+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000109.589+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 8010,
+      "level": "WARNING",
+      "timestamp": "20260315T000231.779+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000231.779+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 8015,
+      "level": "WARNING",
+      "timestamp": "20260315T000231.779+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000231.779+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 8019,
+      "level": "WARNING",
+      "timestamp": "20260315T000231.779+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000231.779+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 9051,
+      "level": "WARNING",
+      "timestamp": "20260315T000325.888+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000325.888+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 9056,
+      "level": "WARNING",
+      "timestamp": "20260315T000325.888+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000325.888+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    },
+    {
+      "id": 9060,
+      "level": "WARNING",
+      "timestamp": "20260315T000325.888+0100",
+      "module": "npbuscom.dll",
+      "source": "npPromotionRun.cpp@135",
+      "message": "Promotion product 8937 not found",
+      "raw": "WARNING\t20260315T000325.888+0100\t9668\tnpbuscom.dll\t2222\tnpPromotionRun.cpp@135\tPromotion product 8937 not found"
+    }
+  ]
+}

@@ -1,1389 +1,1304 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react"
+import {
+  AlertTriangle,
+  BarChart3,
+  Bookmark,
+  CheckSquare,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Download,
+  EyeOff,
+  FileText,
+  Filter,
+  Folder,
+  FolderOpen,
+  Highlighter,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  PanelRightClose,
+  PanelRightOpen,
+  RefreshCw,
+  Save,
+  Search,
+  Sparkles,
+  Square,
+  Star,
+  Upload,
+  X,
+} from "lucide-react"
 
-interface LogFile {
-  name: string
-  size: number
-  modified: string
+import { ExplorerDirectoryNode, ExplorerTreeNode, useLogFiles } from "@/hooks/use-log-files"
+import { filterEntries } from "@/lib/logs/filters"
+import { formatTimestampSlice } from "@/lib/logs/parser"
+import { cn } from "@/lib/utils"
+import { CustomFilter, LogEntry, LogLevel, SavedSearch, SearchMode } from "@/lib/logs/types"
+
+const LOG_LEVELS: LogLevel[] = ["INFO", "DEBUG", "WARNING", "ERROR", "UNKNOWN"]
+const SEARCH_MODES: SearchMode[] = ["smart", "text", "regex"]
+const FILTER_STORAGE_KEY = "log-analyzer.custom-filters"
+const SEARCH_HISTORY_STORAGE_KEY = "log-analyzer.search-history"
+const SAVED_SEARCH_STORAGE_KEY = "log-analyzer.saved-searches"
+const INITIAL_VISIBLE_ROWS = 250
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-interface LogEntry {
-  id: number
-  level: string
-  timestamp: string
-  thread: string
-  module: string
-  code: string
-  source: string
-  message: string
-  raw: string
+function formatModified(value: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value))
 }
 
-interface LogStats {
-  total: number
-  info: number
-  debug: number
-  warning: number
-  error: number
-  timeline: number[]
-  timelineMax: number
-  topModules: { name: string; errors: number; warnings: number; total: number }[]
-  anomalies: { id: string; message: string; module: string; timestamp: string; index: number }[]
-  execTime: { avg: number; max: number; min: number }
-  firstTs: string
-  lastTs: string
+function formatDuration(value: number): string {
+  if (value <= 0) {
+    return "-"
+  }
+
+  return `${value} ms`
+}
+
+function buildFilter(name: string, pattern: string, color: string): CustomFilter {
+  return {
+    id: `${Date.now()}-${name}`,
+    name: name.trim(),
+    pattern: pattern.trim(),
+    color,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function buildSavedSearch(
+  name: string,
+  query: string,
+  mode: SearchMode,
+  levels: LogLevel[],
+  filterIds: string[],
+): SavedSearch {
+  return {
+    id: `${Date.now()}-${name}`,
+    name,
+    query,
+    mode,
+    levels,
+    filterIds,
+    createdAt: new Date().toISOString(),
+  }
+}
+
+function getLevelBadgeClass(level: LogLevel): string {
+  switch (level) {
+    case "ERROR":
+      return "border-red-500/30 bg-red-500/10 text-red-300"
+    case "WARNING":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-200"
+    case "INFO":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200"
+    case "DEBUG":
+      return "border-cyan-500/30 bg-cyan-500/10 text-cyan-200"
+    default:
+      return "border-zinc-700 bg-zinc-900 text-zinc-300"
+  }
+}
+
+function getRowAccent(level: LogLevel): string {
+  switch (level) {
+    case "ERROR":
+      return "border-l-red-500/70"
+    case "WARNING":
+      return "border-l-amber-500/70"
+    case "INFO":
+      return "border-l-emerald-500/50"
+    case "DEBUG":
+      return "border-l-cyan-500/40"
+    default:
+      return "border-l-zinc-800"
+  }
+}
+
+function readImportedFilters(file: File): Promise<CustomFilter[]> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+
+    reader.onload = (event) => {
+      try {
+        const value = String(event.target?.result ?? "[]")
+        const parsed = JSON.parse(value) as Partial<CustomFilter>[]
+        const filters = parsed
+          .filter((item) => item.name && item.pattern && item.color)
+          .map((item) => ({
+            id: `${Date.now()}-${item.name}`,
+            name: String(item.name),
+            pattern: String(item.pattern),
+            color: String(item.color),
+            createdAt: item.createdAt ? String(item.createdAt) : new Date().toISOString(),
+          }))
+
+        resolve(filters)
+      } catch (error) {
+        reject(error)
+      }
+    }
+
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file)
+  })
+}
+
+function readStoredArray<T>(key: string, guard: (value: unknown) => value is T[]): T[] {
+  const raw = window.localStorage.getItem(key)
+
+  if (!raw) {
+    return []
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as unknown
+
+    if (!guard(parsed)) {
+      window.localStorage.removeItem(key)
+      return []
+    }
+
+    return parsed
+  } catch {
+    window.localStorage.removeItem(key)
+    return []
+  }
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+}
+
+function isCustomFilterArray(value: unknown): value is CustomFilter[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        !!item &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        typeof item.pattern === "string" &&
+        typeof item.color === "string" &&
+        typeof item.createdAt === "string",
+    )
+  )
+}
+
+function isSavedSearchArray(value: unknown): value is SavedSearch[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) =>
+        !!item &&
+        typeof item === "object" &&
+        typeof item.id === "string" &&
+        typeof item.name === "string" &&
+        typeof item.query === "string" &&
+        typeof item.mode === "string" &&
+        Array.isArray(item.levels) &&
+        Array.isArray(item.filterIds) &&
+        typeof item.createdAt === "string",
+    )
+  )
+}
+
+function MetricCard({ label, value, tone = "default" }: { label: string; value: string | number; tone?: "default" | "error" | "warning" | "info" | "success" }) {
+  const toneClass =
+    tone === "error"
+      ? "text-red-300"
+      : tone === "warning"
+        ? "text-amber-200"
+        : tone === "info"
+          ? "text-cyan-200"
+          : tone === "success"
+            ? "text-emerald-200"
+            : "text-zinc-100"
+
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950/90 p-3">
+      <div className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">{label}</div>
+      <div className={cn("mt-2 text-lg font-semibold", toneClass)}>{value}</div>
+    </div>
+  )
+}
+
+function SectionCard({
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string
+  open: boolean
+  onToggle: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <section className="rounded-xl border border-zinc-900 bg-zinc-950/85">
+      <button onClick={onToggle} className="flex w-full items-center justify-between px-4 py-3 text-left">
+        <span className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">{title}</span>
+        {open ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+      </button>
+      {open && <div className="border-t border-zinc-900 px-4 py-4">{children}</div>}
+    </section>
+  )
+}
+
+function TreeNodeView({
+  node,
+  depth,
+  expandedPaths,
+  selectedFileId,
+  onToggleDirectory,
+  onSelectFile,
+}: {
+  node: ExplorerTreeNode
+  depth: number
+  expandedPaths: Set<string>
+  selectedFileId: string | null
+  onToggleDirectory: (path: string) => void
+  onSelectFile: (fileId: string) => void
+}) {
+  const paddingLeft = 12 + depth * 14
+
+  if (node.kind === "directory") {
+    const open = expandedPaths.has(node.path)
+
+    return (
+      <div>
+        <button
+          onClick={() => onToggleDirectory(node.path)}
+          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+          style={{ paddingLeft }}
+        >
+          {open ? <ChevronDown className="h-4 w-4 text-zinc-500" /> : <ChevronRight className="h-4 w-4 text-zinc-500" />}
+          {open ? <FolderOpen className="h-4 w-4 text-cyan-300" /> : <Folder className="h-4 w-4 text-zinc-500" />}
+          <span className="truncate">{node.name}</span>
+        </button>
+
+        {open && (
+          <div>
+            {node.children.map((child) => (
+              <TreeNodeView
+                key={child.id}
+                node={child}
+                depth={depth + 1}
+                expandedPaths={expandedPaths}
+                selectedFileId={selectedFileId}
+                onToggleDirectory={onToggleDirectory}
+                onSelectFile={onSelectFile}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  const active = selectedFileId === node.fileId
+
+  return (
+    <button
+      onClick={() => onSelectFile(node.fileId)}
+      className={cn(
+        "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+        active ? "bg-cyan-500/12 text-cyan-100" : "text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200",
+      )}
+      style={{ paddingLeft }}
+      title={node.path}
+    >
+      <FileText className={cn("h-4 w-4 shrink-0", active ? "text-cyan-300" : "text-zinc-500")} />
+      <span className="truncate">{node.name}</span>
+    </button>
+  )
+}
+
+function LogRow({
+  entry,
+  selected,
+  marked,
+  onToggleSelect,
+  onToggleMark,
+  onHide,
+}: {
+  entry: LogEntry
+  selected: boolean
+  marked: boolean
+  onToggleSelect: () => void
+  onToggleMark: () => void
+  onHide: () => void
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[92px_84px_130px_150px_160px_minmax(0,1fr)] gap-3 border-l-2 border-b border-zinc-900 px-4 py-2 text-xs transition-colors hover:bg-zinc-950/60",
+        getRowAccent(entry.level),
+        selected && "bg-cyan-500/6",
+        marked && "shadow-[inset_3px_0_0_0_rgba(250,204,21,0.55)]",
+      )}
+    >
+      <div className="flex items-center gap-2 font-mono text-zinc-500">
+        <button onClick={onToggleSelect} className="text-zinc-400 hover:text-cyan-200">
+          {selected ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+        </button>
+        <button onClick={onToggleMark} className={cn("hover:text-amber-200", marked ? "text-amber-300" : "text-zinc-500")}>
+          <Star className="h-4 w-4" fill={marked ? "currentColor" : "none"} />
+        </button>
+        <button onClick={onHide} className="text-zinc-500 hover:text-red-300">
+          <EyeOff className="h-4 w-4" />
+        </button>
+        <span>{entry.id}</span>
+      </div>
+      <div>
+        <span className={cn("inline-flex rounded border px-2 py-0.5 font-mono text-[10px]", getLevelBadgeClass(entry.level))}>{entry.level}</span>
+      </div>
+      <div className="truncate font-mono text-zinc-400">{formatTimestampSlice(entry.timestamp) || "-"}</div>
+      <div className="truncate text-zinc-300">{entry.module || "-"}</div>
+      <div className="truncate text-zinc-500">{entry.source || entry.code || "-"}</div>
+      <div className="whitespace-pre-wrap break-words text-zinc-100">{entry.message || entry.raw}</div>
+    </div>
+  )
+}
+
+function collectDirectoryPaths(nodes: ExplorerTreeNode[]): string[] {
+  const paths: string[] = []
+
+  for (const node of nodes) {
+    if (node.kind === "directory") {
+      paths.push(node.path)
+    }
+  }
+
+  return paths
+}
+
+function collectAncestorPaths(path: string): string[] {
+  const segments = path.split("/").filter(Boolean)
+  const paths: string[] = []
+  let current = ""
+
+  for (let index = 0; index < Math.max(segments.length - 1, 0); index += 1) {
+    current = current ? `${current}/${segments[index]}` : segments[index]
+    paths.push(current)
+  }
+
+  return paths
 }
 
 export default function LogDashboard() {
-  const [files, setFiles] = useState<LogFile[]>([])
-  const [selectedFile, setSelectedFile] = useState<string | null>(null)
-  const [entries, setEntries] = useState<LogEntry[]>([])
-  const [filteredEntries, setFilteredEntries] = useState<LogEntry[]>([])
-  const [stats, setStats] = useState<LogStats | null>(null)
-  const [loading, setLoading] = useState(false)
+  const folderInputRef = useRef<HTMLInputElement>(null)
+  const filterImportRef = useRef<HTMLInputElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+
+  const { fileTree, files, folderLabel, selectedFile, entries, stats, loading, error, loadFiles, selectFile } = useLogFiles()
+
   const [searchTerm, setSearchTerm] = useState("")
-  const [levelFilter, setLevelFilter] = useState<string[]>(["INFO", "DEBUG", "WARNING", "ERROR"])
-  const [visibleCount, setVisibleCount] = useState(100)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [statsOpen, setStatsOpen] = useState(true)
-  const loadMoreRef = useRef<HTMLDivElement>(null)
-  const logsContainerRef = useRef<HTMLDivElement>(null)
-  const [sliderValue, setSliderValue] = useState(0)
-  
-  // Search history and filters
-  const [searchHistory, setSearchHistory] = useState<string[]>([])
+  const [searchMode, setSearchMode] = useState<SearchMode>("smart")
   const [showSearchHistory, setShowSearchHistory] = useState(false)
-  const [showFilterMenu, setShowFilterMenu] = useState(false)
-  const [showFilterEditor, setShowFilterEditor] = useState(false)
-  const [showImportConflict, setShowImportConflict] = useState(false)
-  const [importConflicts, setImportConflicts] = useState<{existing: CustomFilter, incoming: CustomFilter}[]>([])
-  const [currentConflictIndex, setCurrentConflictIndex] = useState(0)
-  const [applyToAll, setApplyToAll] = useState(false)
-  const filterInputRef = useRef<HTMLInputElement>(null)
-  
-  // Custom filters
-  interface CustomFilter {
-    id: string
-    name: string
-    regex: string
-    color: string
-    createdAt: string
-  }
-  const [customFilters, setCustomFilters] = useState<CustomFilter[]>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('logAnalyzerFilters')
-      return saved ? JSON.parse(saved) : []
-    }
-    return []
-  })
+  const [searchHistory, setSearchHistory] = useState<string[]>([])
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([])
+  const [levelFilter, setLevelFilter] = useState<LogLevel[]>([...LOG_LEVELS])
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ROWS)
+  const [customFilters, setCustomFilters] = useState<CustomFilter[]>([])
+  const [activeFilterIds, setActiveFilterIds] = useState<string[]>([])
   const [newFilterName, setNewFilterName] = useState("")
-  const [newFilterRegex, setNewFilterRegex] = useState("")
-  const [newFilterColor, setNewFilterColor] = useState("#00F0FF")
-  const [editingFilter, setEditingFilter] = useState<CustomFilter | null>(null)
-  const [activeFilterIds, setActiveFilterIds] = useState<Set<string>>(new Set())
+  const [newFilterPattern, setNewFilterPattern] = useState("")
+  const [newFilterColor, setNewFilterColor] = useState("#22d3ee")
+  const [selectedLineIds, setSelectedLineIds] = useState<number[]>([])
+  const [markedLineIds, setMarkedLineIds] = useState<number[]>([])
+  const [hiddenLineIds, setHiddenLineIds] = useState<number[]>([])
+  const [showOnlySelected, setShowOnlySelected] = useState(false)
+  const [showOnlyMarked, setShowOnlyMarked] = useState(false)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [explorerOpen, setExplorerOpen] = useState(true)
+  const [inspectorOpen, setInspectorOpen] = useState(false)
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set())
+  const [openSections, setOpenSections] = useState<string[]>(["summary", "patterns"])
 
   useEffect(() => {
-    fetchFiles()
-  }, [])
+    const input = folderInputRef.current
 
-  // Auto-load with Intersection Observer
-  useEffect(() => {
-    const currentRef = loadMoreRef.current
-    if (!currentRef) return
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting) {
-          setVisibleCount((prev) => {
-            if (prev < filteredEntries.length) {
-              return prev + 100
-            }
-            return prev
-          })
-        }
-      },
-      { threshold: 0.1, rootMargin: "100px" }
-    )
-
-    observer.observe(currentRef)
-
-    return () => {
-      observer.disconnect()
-    }
-  }, [filteredEntries.length])
-
-  // Filter entries
-  useEffect(() => {
-    let filtered = entries
-
-    if (levelFilter.length < 4) {
-      filtered = filtered.filter((e) => levelFilter.includes(e.level))
-    }
-
-    // Build active custom filter matchers
-    const activeCustomFilters = customFilters.filter(f => activeFilterIds.has(f.id))
-
-    if (searchTerm || activeCustomFilters.length > 0) {
-      filtered = filtered.filter((e) => {
-        const haystack = `${e.message} ${e.module} ${e.source}`.toLowerCase()
-
-        // Check plain search term
-        if (searchTerm && haystack.includes(searchTerm.toLowerCase())) return true
-
-        // Check each active custom filter (regex or plain)
-        for (const cf of activeCustomFilters) {
-          try {
-            const re = new RegExp(cf.regex, "i")
-            if (re.test(e.message) || re.test(e.module) || re.test(e.source)) return true
-          } catch {
-            if (haystack.includes(cf.regex.toLowerCase())) return true
-          }
-        }
-
-        return false
-      })
-    }
-
-    setFilteredEntries(filtered)
-    setVisibleCount(100)
-  }, [entries, levelFilter, searchTerm, activeFilterIds, customFilters])
-
-  // Parse timestamp format: 20260315T000000.253+0100 -> time in ms from start of day
-  const parseTimestamp = (ts: string): number => {
-    if (!ts) return 0
-    // Extract HHMMSS.mmm from format like 20260315T000334.143+0100
-    const timeMatch = ts.match(/T(\d{2})(\d{2})(\d{2})\.(\d{3})/)
-    if (timeMatch) {
-      const [, h, m, s, ms] = timeMatch
-      return parseInt(h) * 3600000 + parseInt(m) * 60000 + parseInt(s) * 1000 + parseInt(ms)
-    }
-    return 0
-  }
-
-  // Format milliseconds to display string HHMMSS.mmm
-  const formatTimeDisplay = (ms: number): string => {
-    const hours = Math.floor(ms / 3600000)
-    const mins = Math.floor((ms % 3600000) / 60000)
-    const secs = Math.floor((ms % 60000) / 1000)
-    const millis = ms % 1000
-    return `${String(hours).padStart(2, '0')}${String(mins).padStart(2, '0')}${String(secs).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
-  }
-
-  // Update slider value visually (no scroll - called during drag)
-  const updateSliderValue = (percentage: number) => {
-    setSliderValue(percentage)
-  }
-
-  // Save filters to localStorage
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('logAnalyzerFilters', JSON.stringify(customFilters))
-    }
-  }, [customFilters])
-
-  // Add search to history
-  const addToSearchHistory = (term: string) => {
-    if (!term.trim()) return
-    setSearchHistory(prev => {
-      const filtered = prev.filter(t => t !== term)
-      return [term, ...filtered].slice(0, 10) // Keep last 10 searches
-    })
-  }
-
-  // Handle search submit
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    addToSearchHistory(searchTerm)
-    setShowSearchHistory(false)
-  }
-
-  // Add new filter
-  const addFilter = () => {
-    if (!newFilterName.trim() || !newFilterRegex.trim()) return
-    const newFilter: CustomFilter = {
-      id: Date.now().toString(),
-      name: newFilterName.trim(),
-      regex: newFilterRegex.trim(),
-      color: newFilterColor,
-      createdAt: new Date().toISOString()
-    }
-    setCustomFilters(prev => [...prev, newFilter])
-    setNewFilterName("")
-    setNewFilterRegex("")
-    setNewFilterColor("#00F0FF")
-  }
-
-  // Delete filter
-  const deleteFilter = (id: string) => {
-    setCustomFilters(prev => prev.filter(f => f.id !== id))
-    setActiveFilterIds(prev => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-  }
-
-  // Update filter
-  const updateFilter = (updatedFilter: CustomFilter) => {
-    setCustomFilters(prev => prev.map(f => f.id === updatedFilter.id ? updatedFilter : f))
-    setEditingFilter(null)
-  }
-
-  // Toggle a custom filter on/off
-  const toggleCustomFilter = (filter: CustomFilter) => {
-    setActiveFilterIds(prev => {
-      const next = new Set(prev)
-      if (next.has(filter.id)) {
-        next.delete(filter.id)
-      } else {
-        next.add(filter.id)
-      }
-      return next
-    })
-  }
-
-  // Export filters to JSON
-  const exportFilters = () => {
-    const data = JSON.stringify(customFilters, null, 2)
-    const blob = new Blob([data], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `log-filters-${new Date().toISOString().slice(0, 10)}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  // Import filters from JSON
-  const importFilters = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      try {
-        const imported: CustomFilter[] = JSON.parse(event.target?.result as string)
-        
-        // Check for conflicts
-        const conflicts: {existing: CustomFilter, incoming: CustomFilter}[] = []
-        const newFilters: CustomFilter[] = []
-
-        imported.forEach(incoming => {
-          const existing = customFilters.find(f => f.name === incoming.name)
-          if (existing) {
-            conflicts.push({ existing, incoming })
-          } else {
-            newFilters.push({ ...incoming, id: Date.now().toString() + Math.random() })
-          }
-        })
-
-        if (conflicts.length > 0) {
-          setImportConflicts(conflicts)
-          setCurrentConflictIndex(0)
-          setApplyToAll(false)
-          setShowImportConflict(true)
-          // Add non-conflicting filters immediately
-          setCustomFilters(prev => [...prev, ...newFilters])
-        } else {
-          // No conflicts, add all
-          setCustomFilters(prev => [...prev, ...newFilters])
-        }
-      } catch (err) {
-        console.error("Failed to parse filters file:", err)
-      }
-    }
-    reader.readAsText(file)
-    e.target.value = '' // Reset input
-  }
-
-  // Handle conflict resolution
-  const resolveConflict = (overwrite: boolean) => {
-    const conflict = importConflicts[currentConflictIndex]
-    
-    if (overwrite) {
-      setCustomFilters(prev => prev.map(f => 
-        f.name === conflict.existing.name 
-          ? { ...conflict.incoming, id: conflict.existing.id }
-          : f
-      ))
-    }
-
-    if (applyToAll) {
-      // Apply same decision to all remaining conflicts
-      const remaining = importConflicts.slice(currentConflictIndex + 1)
-      if (overwrite) {
-        remaining.forEach(c => {
-          setCustomFilters(prev => prev.map(f => 
-            f.name === c.existing.name 
-              ? { ...c.incoming, id: c.existing.id }
-              : f
-          ))
-        })
-      }
-      setShowImportConflict(false)
-      setImportConflicts([])
-    } else if (currentConflictIndex < importConflicts.length - 1) {
-      setCurrentConflictIndex(prev => prev + 1)
-    } else {
-      setShowImportConflict(false)
-      setImportConflicts([])
-    }
-  }
-
-  // Jump to a specific line index in the logs (lineId is the entry.id from the log)
-  const jumpToLine = (lineId: number) => {
-    // Find the index in filtered entries by matching the entry id
-    const targetIndex = filteredEntries.findIndex((e) => e.id === lineId)
-    
-    if (targetIndex === -1) {
+    if (!input) {
       return
     }
 
-    // Load enough entries to reach this index
-    if (visibleCount < targetIndex + 50) {
-      setVisibleCount(targetIndex + 100)
+    input.setAttribute("webkitdirectory", "")
+    input.setAttribute("directory", "")
+  }, [])
+
+  useEffect(() => {
+    setCustomFilters(readStoredArray(FILTER_STORAGE_KEY, isCustomFilterArray))
+    setSearchHistory(readStoredArray(SEARCH_HISTORY_STORAGE_KEY, isStringArray))
+    setSavedSearches(readStoredArray(SAVED_SEARCH_STORAGE_KEY, isSavedSearchArray))
+  }, [])
+
+  useEffect(() => {
+    window.localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(customFilters))
+  }, [customFilters])
+
+  useEffect(() => {
+    window.localStorage.setItem(SEARCH_HISTORY_STORAGE_KEY, JSON.stringify(searchHistory))
+  }, [searchHistory])
+
+  useEffect(() => {
+    window.localStorage.setItem(SAVED_SEARCH_STORAGE_KEY, JSON.stringify(savedSearches))
+  }, [savedSearches])
+
+  useEffect(() => {
+    setVisibleCount(INITIAL_VISIBLE_ROWS)
+  }, [selectedFile?.id, searchTerm, searchMode, levelFilter, activeFilterIds, hiddenLineIds, showOnlySelected, showOnlyMarked])
+
+  useEffect(() => {
+    setSelectedLineIds([])
+    setMarkedLineIds([])
+    setHiddenLineIds([])
+    setShowOnlyMarked(false)
+    setShowOnlySelected(false)
+  }, [selectedFile?.id])
+
+  useEffect(() => {
+    if (!actionMessage) {
+      return
     }
 
-    // Update slider to reflect position
-    const percentage = (targetIndex / (filteredEntries.length - 1)) * 100
-    setSliderValue(percentage)
+    const timeout = window.setTimeout(() => setActionMessage(null), 2400)
+    return () => window.clearTimeout(timeout)
+  }, [actionMessage])
 
-    // Scroll to the entry after a brief delay for rendering
-    setTimeout(() => {
-      const container = logsContainerRef.current
-      if (container) {
-        const entryElements = container.querySelectorAll('[data-entry-id]')
-        if (entryElements[targetIndex]) {
-          entryElements[targetIndex].scrollIntoView({ behavior: 'smooth', block: 'center' })
-        }
+  useEffect(() => {
+    if (fileTree.length === 0) {
+      setExpandedPaths(new Set())
+      return
+    }
+
+    const next = new Set<string>(collectDirectoryPaths(fileTree))
+
+    if (selectedFile) {
+      for (const path of collectAncestorPaths(selectedFile.relativePath)) {
+        next.add(path)
       }
-    }, 150)
-  }
+    }
 
-  // Jump to specific position in logs based on slider percentage (only on release)
-  const jumpToPosition = (percentage: number) => {
-    setSliderValue(percentage)
-    
-    // Calculate target index based on percentage of filtered entries
-    const targetIndex = Math.floor((percentage / 100) * (filteredEntries.length - 1))
+    setExpandedPaths(next)
+  }, [fileTree, selectedFile?.id])
 
-    if (targetIndex >= 0 && targetIndex < filteredEntries.length) {
-      // Load enough entries to reach this index
-      if (visibleCount < targetIndex + 50) {
-        setVisibleCount(targetIndex + 100)
+  const activeFilters = useMemo(() => {
+    return customFilters.filter((filter) => activeFilterIds.includes(filter.id))
+  }, [activeFilterIds, customFilters])
+
+  const baseFilteredEntries = useMemo(() => {
+    return filterEntries({
+      entries,
+      searchTerm,
+      searchMode,
+      levelFilter,
+      activeFilters,
+    })
+  }, [activeFilters, entries, levelFilter, searchMode, searchTerm])
+
+  const visibleEntries = useMemo(() => {
+    return baseFilteredEntries.filter((entry) => {
+      if (hiddenLineIds.includes(entry.id)) {
+        return false
       }
 
-      // Scroll to the entry after a brief delay for rendering
-      setTimeout(() => {
-        const container = logsContainerRef.current
-        if (container) {
-          const entryElements = container.querySelectorAll('[data-entry-id]')
-          if (entryElements[targetIndex]) {
-            entryElements[targetIndex].scrollIntoView({ behavior: 'smooth', block: 'center' })
-          }
-        }
-      }, 100)
-    }
+      if (showOnlySelected && !selectedLineIds.includes(entry.id)) {
+        return false
+      }
+
+      if (showOnlyMarked && !markedLineIds.includes(entry.id)) {
+        return false
+      }
+
+      return true
+    })
+  }, [baseFilteredEntries, hiddenLineIds, markedLineIds, selectedLineIds, showOnlyMarked, showOnlySelected])
+
+  const selectedVisibleEntries = useMemo(() => {
+    return visibleEntries.filter((entry) => selectedLineIds.includes(entry.id))
+  }, [selectedLineIds, visibleEntries])
+
+  async function handleFolderChange(event: ChangeEvent<HTMLInputElement>) {
+    const incomingFiles = Array.from(event.target.files ?? [])
+    await loadFiles(incomingFiles)
+    event.target.value = ""
+    setExplorerOpen(true)
   }
 
-  const fetchFiles = async () => {
+  async function handleImportFilters(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+
+    if (!file) {
+      return
+    }
+
     try {
-      const res = await fetch("/api/logs")
-      const data = await res.json()
-      setFiles(data.files || [])
-    } catch (error) {
-      console.error("Error fetching files:", error)
+      const imported = await readImportedFilters(file)
+      const nextByName = new Map(customFilters.map((filter) => [filter.name, filter]))
+
+      for (const filter of imported) {
+        nextByName.set(filter.name, filter)
+      }
+
+      setCustomFilters([...nextByName.values()])
+      setActionMessage("Filtros importados.")
+    } finally {
+      event.target.value = ""
     }
   }
 
-  const fetchLogContent = async (filename: string) => {
-    setLoading(true)
-    setSelectedFile(filename)
+  function toggleSection(section: string) {
+    setOpenSections((current) => {
+      return current.includes(section) ? current.filter((item) => item !== section) : [...current, section]
+    })
+  }
+
+  function toggleDirectory(path: string) {
+    setExpandedPaths((current) => {
+      const next = new Set(current)
+
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+
+      return next
+    })
+  }
+
+  function downloadTextFile(filename: string, content: string) {
+    const blob = new Blob([content], { type: "text/plain;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function downloadJsonFile(filename: string, content: unknown) {
+    const blob = new Blob([JSON.stringify(content, null, 2)], { type: "application/json;charset=utf-8" })
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement("a")
+    anchor.href = url
+    anchor.download = filename
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
+
+  async function copyText(content: string, successMessage: string) {
     try {
-      const res = await fetch(`/api/logs/${encodeURIComponent(filename)}`)
-      const data = await res.json()
-      setEntries(data.entries || [])
-      setStats(data.stats || null)
-    } catch (error) {
-      console.error("Error fetching log content:", error)
-    }
-    setLoading(false)
-  }
-
-  const toggleLevel = (level: string) => {
-    setLevelFilter((prev) => (prev.includes(level) ? prev.filter((l) => l !== level) : [...prev, level]))
-  }
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case "ERROR":
-        return "text-[#FF2A2A]"
-      case "WARNING":
-        return "text-[#FFB000]"
-      case "INFO":
-        return "text-[#00FF66]"
-      case "DEBUG":
-        return "text-[#52525F]"
-      default:
-        return "text-[#52525F]"
+      await navigator.clipboard.writeText(content)
+      setActionMessage(successMessage)
+    } catch {
+      setActionMessage("Não foi possível copiar para a área de transferência.")
     }
   }
 
-  const getLevelBadge = (level: string) => {
-    switch (level) {
-      case "ERROR":
-        return "text-[#FF2A2A] bg-[#FF2A2A]/10 border-[#FF2A2A]/20"
-      case "WARNING":
-        return "text-[#FFB000] bg-[#FFB000]/10 border-[#FFB000]/20"
-      case "INFO":
-        return "text-[#00FF66] bg-[#00FF66]/10 border-[#00FF66]/20"
-      case "DEBUG":
-        return "text-[#00F0FF] bg-[#00F0FF]/10 border-[#00F0FF]/20"
-      default:
-        return "text-[#52525F] bg-[#52525F]/10 border-[#52525F]/20"
+  function handleExportFilters() {
+    downloadJsonFile(`log-filters-${new Date().toISOString().slice(0, 10)}.json`, customFilters)
+  }
+
+  function toggleLevel(level: LogLevel) {
+    setLevelFilter((current) => {
+      return current.includes(level) ? current.filter((item) => item !== level) : [...current, level]
+    })
+  }
+
+  function addCustomFilter() {
+    if (!newFilterName.trim() || !newFilterPattern.trim()) {
+      return
     }
+
+    const next = buildFilter(newFilterName, newFilterPattern, newFilterColor)
+    setCustomFilters((current) => [...current, next])
+    setActiveFilterIds((current) => [...current, next.id])
+    setNewFilterName("")
+    setNewFilterPattern("")
+    setNewFilterColor("#22d3ee")
+    setActionMessage("Filtro adicionado.")
+  }
+
+  function removeCustomFilter(filterId: string) {
+    setCustomFilters((current) => current.filter((filter) => filter.id !== filterId))
+    setActiveFilterIds((current) => current.filter((id) => id !== filterId))
+  }
+
+  function toggleCustomFilter(filterId: string) {
+    setActiveFilterIds((current) => {
+      return current.includes(filterId) ? current.filter((id) => id !== filterId) : [...current, filterId]
+    })
+  }
+
+  function addSearchToHistory(query: string) {
+    const trimmed = query.trim()
+
+    if (!trimmed) {
+      return
+    }
+
+    setSearchHistory((current) => [trimmed, ...current.filter((item) => item !== trimmed)].slice(0, 12))
+  }
+
+  function saveCurrentSearch() {
+    if (!searchTerm.trim()) {
+      setActionMessage("Digite uma busca antes de salvar.")
+      return
+    }
+
+    const name = searchTerm.trim().slice(0, 36)
+    const saved = buildSavedSearch(name, searchTerm.trim(), searchMode, levelFilter, activeFilterIds)
+    setSavedSearches((current) => [saved, ...current.filter((item) => item.name !== saved.name)].slice(0, 12))
+    addSearchToHistory(searchTerm)
+    setActionMessage("Busca salva.")
+  }
+
+  function applySavedSearch(savedSearch: SavedSearch) {
+    setSearchTerm(savedSearch.query)
+    setSearchMode(savedSearch.mode)
+    setLevelFilter(savedSearch.levels)
+    setActiveFilterIds(savedSearch.filterIds)
+    addSearchToHistory(savedSearch.query)
+    setShowSearchHistory(false)
+    setActionMessage(`Busca aplicada: ${savedSearch.name}`)
+  }
+
+  function removeSavedSearch(id: string) {
+    setSavedSearches((current) => current.filter((item) => item.id !== id))
+  }
+
+  function toggleLineSelection(lineId: number) {
+    setSelectedLineIds((current) => {
+      return current.includes(lineId) ? current.filter((id) => id !== lineId) : [...current, lineId]
+    })
+  }
+
+  function toggleLineMark(lineId: number) {
+    setMarkedLineIds((current) => {
+      return current.includes(lineId) ? current.filter((id) => id !== lineId) : [...current, lineId]
+    })
+  }
+
+  function hideLine(lineId: number) {
+    setHiddenLineIds((current) => (current.includes(lineId) ? current : [...current, lineId]))
+    setSelectedLineIds((current) => current.filter((id) => id !== lineId))
+  }
+
+  function selectAllVisible() {
+    setSelectedLineIds(visibleEntries.map((entry) => entry.id))
+  }
+
+  function clearSelection() {
+    setSelectedLineIds([])
+  }
+
+  function markSelectedLines() {
+    if (selectedLineIds.length === 0) {
+      return
+    }
+
+    setMarkedLineIds((current) => [...new Set([...current, ...selectedLineIds])])
+    setActionMessage("Linhas selecionadas marcadas.")
+  }
+
+  function hideSelectedLines() {
+    if (selectedLineIds.length === 0) {
+      return
+    }
+
+    setHiddenLineIds((current) => [...new Set([...current, ...selectedLineIds])])
+    setSelectedLineIds([])
+    setActionMessage("Linhas selecionadas ocultadas.")
+  }
+
+  function clearHiddenLines() {
+    setHiddenLineIds([])
+    setActionMessage("Linhas ocultas restauradas.")
+  }
+
+  function clearAllViewControls() {
+    setSearchTerm("")
+    setSearchMode("smart")
+    setLevelFilter([...LOG_LEVELS])
+    setActiveFilterIds([])
+    setHiddenLineIds([])
+    setShowOnlyMarked(false)
+    setShowOnlySelected(false)
+    setActionMessage("Visão resetada.")
+  }
+
+  function buildExportPayload(targetEntries: LogEntry[]) {
+    return {
+      file: selectedFile?.relativePath ?? null,
+      folder: folderLabel,
+      searchTerm,
+      searchMode,
+      levelFilter,
+      activeFilters: activeFilters.map((filter) => ({ name: filter.name, pattern: filter.pattern })),
+      lines: targetEntries.map((entry) => ({
+        id: entry.id,
+        level: entry.level,
+        timestamp: entry.timestamp,
+        module: entry.module,
+        source: entry.source,
+        message: entry.message,
+        raw: entry.raw,
+      })),
+    }
+  }
+
+  function exportSelectedAsText() {
+    if (selectedVisibleEntries.length === 0) {
+      setActionMessage("Nenhuma linha selecionada para exportar.")
+      return
+    }
+
+    downloadTextFile(
+      `${selectedFile?.name ?? "selected-lines"}-selected.txt`,
+      selectedVisibleEntries.map((entry) => entry.raw).join("\n\n"),
+    )
+  }
+
+  function exportSelectedAsJson() {
+    if (selectedVisibleEntries.length === 0) {
+      setActionMessage("Nenhuma linha selecionada para exportar.")
+      return
+    }
+
+    downloadJsonFile(`${selectedFile?.name ?? "selected-lines"}-selected.json`, buildExportPayload(selectedVisibleEntries))
+  }
+
+  function exportVisibleAsText() {
+    if (visibleEntries.length === 0) {
+      setActionMessage("Nenhuma linha visível para exportar.")
+      return
+    }
+
+    downloadTextFile(`${selectedFile?.name ?? "visible-lines"}-visible.txt`, visibleEntries.map((entry) => entry.raw).join("\n\n"))
+  }
+
+  function exportVisibleAsJson() {
+    if (visibleEntries.length === 0) {
+      setActionMessage("Nenhuma linha visível para exportar.")
+      return
+    }
+
+    downloadJsonFile(`${selectedFile?.name ?? "visible-lines"}-visible.json`, buildExportPayload(visibleEntries))
+  }
+
+  async function copySelectedForAi() {
+    if (selectedVisibleEntries.length === 0) {
+      setActionMessage("Nenhuma linha selecionada para IA.")
+      return
+    }
+
+    await copyText(JSON.stringify(buildExportPayload(selectedVisibleEntries), null, 2), "Payload para IA copiado.")
+  }
+
+  function usePatternAsSearch(pattern: string) {
+    setSearchTerm(pattern)
+    setSearchMode("text")
+    addSearchToHistory(pattern)
+    setInspectorOpen(false)
   }
 
   return (
-    <div className="h-screen w-screen flex flex-col bg-[#070709] text-[#E0E0E6] overflow-hidden text-sm font-sans selection:bg-[#00F0FF] selection:text-[#070709]">
-      {/* Grid Background */}
-      <div 
-        className="fixed inset-0 opacity-50 pointer-events-none z-0"
-        style={{
-          backgroundSize: '40px 40px',
-          backgroundImage: 'linear-gradient(to right, #121216 1px, transparent 1px), linear-gradient(to bottom, #121216 1px, transparent 1px)'
-        }}
-      />
+    <div className="h-screen overflow-hidden bg-[#070709] text-zinc-100">
+      <input ref={folderInputRef} type="file" multiple className="hidden" onChange={handleFolderChange} />
+      <input ref={filterImportRef} type="file" accept=".json" className="hidden" onChange={handleImportFilters} />
 
-      {/* Corner Markers */}
-      <div className="fixed top-4 left-4 w-4 h-4 border-t-2 border-l-2 border-[#52525F] opacity-30 z-50" />
-      <div className="fixed top-4 right-4 w-4 h-4 border-t-2 border-r-2 border-[#52525F] opacity-30 z-50" />
-      <div className="fixed bottom-4 left-4 w-4 h-4 border-b-2 border-l-2 border-[#52525F] opacity-30 z-50" />
-      <div className="fixed bottom-4 right-4 w-4 h-4 border-b-2 border-r-2 border-[#52525F] opacity-30 z-50" />
+      <div className="fixed inset-0 opacity-25" style={{ backgroundImage: "linear-gradient(to right, #101014 1px, transparent 1px), linear-gradient(to bottom, #101014 1px, transparent 1px)", backgroundSize: "36px 36px" }} />
 
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-[#1F1F24] bg-[#121216] px-4 py-2 shrink-0 relative z-10">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <svg className="text-[#00F0FF]" fill="none" height="16" viewBox="0 0 48 48" width="16" xmlns="http://www.w3.org/2000/svg">
-              <path d="M13.8261 17.4264C16.7203 18.1174 20.2244 18.5217 24 18.5217C27.7756 18.5217 31.2797 18.1174 34.1739 17.4264C36.9144 16.7722 39.9967 15.2331 41.3563 14.1648L24.8486 40.6391C24.4571 41.267 23.5429 41.267 23.1514 40.6391L6.64374 14.1648C8.00331 15.2331 11.0856 16.7722 13.8261 17.4264Z" fill="currentColor"/>
-            </svg>
-            <h1 className="text-[13px] font-semibold tracking-wider uppercase text-[#E0E0E6]">CYBER MATRIX</h1>
+      <div className="relative z-10 flex h-full flex-col">
+        <header className="border-b border-zinc-900 bg-zinc-950/90 backdrop-blur">
+          <div className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="flex items-center gap-3">
+              <div className="rounded-full border border-cyan-500/30 bg-cyan-500/10 p-2 text-cyan-300">
+                <BarChart3 className="h-4 w-4" />
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-[0.3em] text-zinc-500">Local Log Analyzer</div>
+                <h1 className="text-lg font-semibold text-zinc-100">McDonald&apos;s PXT Log Workspace</h1>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button onClick={() => setExplorerOpen((current) => !current)} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                {explorerOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+                explorer
+              </button>
+              <button onClick={() => setInspectorOpen((current) => !current)} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                {inspectorOpen ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                detalhes
+              </button>
+              <button onClick={() => folderInputRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm font-medium text-cyan-200 hover:bg-cyan-500/20">
+                <FolderOpen className="h-4 w-4" />
+                Selecionar pasta
+              </button>
+            </div>
           </div>
-          <div className="h-4 w-px bg-[#1F1F24] mx-2" />
-          {selectedFile && (
-            <span className="text-xs text-[#52525F] font-mono bg-[#1A1A20] px-2 py-0.5 border border-[#1F1F24]">
-              /Logs/{selectedFile}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-4 text-[#52525F]">
-          {stats && (
-            <>
-              <div className="flex items-center gap-1 text-xs">
-                <span className="w-2 h-2 bg-[#FF2A2A]" /> {stats.error} Errors
-              </div>
-              <div className="flex items-center gap-1 text-xs">
-                <span className="w-2 h-2 bg-[#FFB000]" /> {stats.warning} Warns
-              </div>
-            </>
-          )}
-          <button
-            onClick={fetchFiles}
-            className="text-[#52525F] hover:text-[#00F0FF] transition-colors"
-            title="Atualizar"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-          </button>
-        </div>
-      </header>
 
-      {/* Main Workspace */}
-      <main className="flex flex-1 overflow-hidden h-full relative z-10">
-        {/* Left Sidebar: File Tree */}
-        <aside className={`bg-[#121216] border-r border-[#1F1F24] flex flex-col shrink-0 h-full overflow-y-auto transition-all duration-300 ${sidebarOpen ? 'w-[250px]' : 'w-[50px]'}`}>
-          <div className="px-3 py-2 border-b border-[#1F1F24] flex justify-between items-center bg-[#1A1A20] sticky top-0 z-10">
-            {sidebarOpen && (
-              <span className="text-[11px] font-semibold tracking-widest uppercase text-[#52525F]">Explorer</span>
-            )}
-            <button 
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-[#52525F] hover:text-[#00F0FF] ml-auto"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {sidebarOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+          <div className="flex flex-wrap items-center gap-2 border-t border-zinc-900 px-4 py-2 text-xs text-zinc-500">
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono">pasta: {folderLabel}</span>
+            {selectedFile && <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono">arquivo: {selectedFile.relativePath}</span>}
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono">visíveis: {visibleEntries.length}</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono">selecionadas: {selectedVisibleEntries.length}</span>
+            <span className="rounded-full border border-zinc-800 bg-zinc-900 px-3 py-1 font-mono">ocultas: {hiddenLineIds.length}</span>
+          </div>
+        </header>
+
+        {actionMessage && (
+          <div className="px-4 pt-3">
+            <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-100">{actionMessage}</div>
+          </div>
+        )}
+
+        <div className="flex min-h-0 flex-1 gap-4 px-4 py-4">
+          {explorerOpen && (
+            <aside className="flex w-[320px] min-w-[280px] flex-col overflow-hidden rounded-2xl border border-zinc-900 bg-zinc-950/90">
+              <div className="border-b border-zinc-900 px-4 py-3">
+                <div className="text-[11px] uppercase tracking-[0.24em] text-zinc-500">Explorer</div>
+                <div className="mt-1 text-sm text-zinc-300">Árvore de pastas e logs</div>
+              </div>
+
+              <div className="min-h-0 flex-1 overflow-auto px-2 py-3">
+                {fileTree.length === 0 ? (
+                  <div className="mx-2 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-8 text-center">
+                    <Upload className="mx-auto h-5 w-5 text-zinc-600" />
+                    <div className="mt-3 text-sm text-zinc-300">Selecione uma pasta com logs.</div>
+                    <div className="mt-2 text-xs text-zinc-500">A estrutura será exibida como uma árvore expansível.</div>
+                  </div>
                 ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                  fileTree.map((node) => (
+                    <TreeNodeView
+                      key={node.id}
+                      node={node}
+                      depth={0}
+                      expandedPaths={expandedPaths}
+                      selectedFileId={selectedFile?.id ?? null}
+                      onToggleDirectory={toggleDirectory}
+                      onSelectFile={(fileId) => void selectFile(fileId)}
+                    />
+                  ))
                 )}
-              </svg>
-            </button>
-          </div>
-          
-          <div className="p-2 flex flex-col gap-0.5 text-[13px] font-mono">
-            {/* Folder */}
-            <div className="group flex items-center gap-2 px-2 py-1 hover:bg-[#1A1A20] cursor-pointer text-[#E0E0E6] font-medium">
-              <svg className="w-4 h-4 text-[#52525F] group-hover:text-[#E0E0E6]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-              </svg>
-              {sidebarOpen && <span>/Logs</span>}
-            </div>
-            
-            {/* Files */}
-            <div className={`flex flex-col gap-0.5 mt-0.5 ${sidebarOpen ? 'pl-4 border-l border-[#1F1F24] ml-[9px]' : ''}`}>
-              {files.length === 0 ? (
-                <div className="px-2 py-4 text-center text-[#52525F] text-xs">
-                  {sidebarOpen ? 'Nenhum arquivo' : '...'}
-                </div>
-              ) : (
-                files.map((file) => (
-                  <button
-                    key={file.name}
-                    onClick={() => fetchLogContent(file.name)}
-                    className={`group flex items-center gap-2 px-2 py-1 cursor-pointer text-left transition-colors ${
-                      selectedFile === file.name
-                        ? 'bg-[#1A1A20] text-[#00F0FF] border-l-2 border-[#00F0FF] -ml-[1px]'
-                        : 'hover:bg-[#1A1A20] text-[#52525F] hover:text-[#E0E0E6]'
-                    }`}
-                  >
-                    <svg className="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
-                    {sidebarOpen && (
-                      <div className="flex flex-col overflow-hidden">
-                        <span className="truncate text-xs">{file.name}</span>
-                        <span className="text-[10px] text-[#52525F]">{formatFileSize(file.size)}</span>
-                      </div>
-                    )}
-                  </button>
-                ))
-              )}
-            </div>
-          </div>
-        </aside>
-
-        {/* Center: Log Viewer */}
-        <section className="flex-1 bg-[#070709] overflow-hidden relative h-full flex flex-col">
-          {!selectedFile ? (
-            /* Initial State - No file selected */
-            <div className="flex-1 flex items-center justify-center">
-              <div className="w-[400px] bg-[#121216] border border-[#1F1F24] border-t-2 border-t-[#00F0FF] shadow-[0_0_20px_rgba(0,240,255,0.05)] flex flex-col">
-                {/* Modal Header */}
-                <div className="px-6 py-5 border-b border-[#1F1F24] flex items-center justify-between">
-                  <div className="flex flex-col gap-1">
-                    <h2 className="text-[#E0E0E6] text-sm font-semibold tracking-[0.05em] uppercase flex items-center gap-2">
-                      <svg className="w-4 h-4 text-[#00F0FF]" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/>
-                      </svg>
-                      CYBER MATRIX / INIT
-                    </h2>
-                  </div>
-                  <span className="w-2 h-2 bg-[#00F0FF] shadow-[0_0_8px_rgba(0,240,255,0.8)] animate-pulse" />
-                </div>
-                
-                {/* Content */}
-                <div className="p-6 flex flex-col gap-6">
-                  {/* Visualizer */}
-                  <div className="w-full h-32 bg-black border border-[#1F1F24] relative overflow-hidden flex items-center justify-center">
-                    <div className="absolute inset-0 opacity-20" style={{backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, #00F0FF 2px, #00F0FF 4px)'}} />
-                    <div className="text-[#52525F] font-mono text-xs z-10 flex flex-col items-center">
-                      <svg className="w-10 h-10 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
-                      </svg>
-                      <span>NO FILE SELECTED</span>
-                    </div>
-                  </div>
-                  
-                  {/* Status */}
-                  <div className="bg-black border border-[#1F1F24] p-3 min-h-[60px] flex items-start gap-2">
-                    <span className="text-[#00F0FF] font-mono text-xs mt-[2px]">&gt;</span>
-                    <div className="flex flex-col font-mono text-xs">
-                      <span className="text-[#52525F]">SYSTEM READY.</span>
-                      <span className="text-[#52525F] flex items-center">
-                        AWAITING FILE SELECTION
-                        <span className="inline-block w-2 h-3 bg-[#00F0FF] ml-1 animate-pulse opacity-70" />
-                      </span>
-                    </div>
-                  </div>
-                  
-                  {/* Action */}
-                  <div className="text-center text-[#52525F] text-xs font-mono">
-                    SELECT A LOG FILE FROM THE EXPLORER
-                  </div>
-                </div>
-                
-                {/* Progress Bar */}
-                <div className="h-[2px] w-full bg-[#1F1F24] overflow-hidden relative">
-                  <div className="absolute top-0 left-0 h-full w-1/3 bg-[#00F0FF] animate-[scan_2s_linear_infinite] opacity-50" />
-                </div>
               </div>
-            </div>
-          ) : (
-            /* Log Viewer */
-            <>
-              {/* Filter Bar */}
-              <div className="px-4 py-2 border-b border-[#1F1F24] bg-[#121216] flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 flex-1">
-                  <span className="text-[#00F0FF] font-mono text-xs">[CONSOLE]</span>
-                  
-                  {/* Search with History */}
-                  <div className="relative flex-1 max-w-md">
-                    <form onSubmit={handleSearchSubmit}>
-                      <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[#52525F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        type="text"
-                        placeholder="Regex filter..."
-                        value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
-                        onFocus={() => setShowSearchHistory(true)}
-                        onBlur={() => setTimeout(() => setShowSearchHistory(false), 200)}
-                        className="w-full bg-[#070709] border border-[#1F1F24] text-[#E0E0E6] pl-8 pr-3 py-1 text-xs font-mono focus:outline-none focus:border-[#00F0FF] transition-colors placeholder:text-[#52525F]"
-                      />
-                    </form>
-                    
-                    {/* Search History Dropdown */}
-                    {showSearchHistory && searchHistory.length > 0 && (
-                      <div className="absolute top-full left-0 w-full mt-1 bg-[#121216] border border-[#1F1F24] z-50 max-h-48 overflow-y-auto">
-                        <div className="px-2 py-1 text-[8px] font-mono text-[#52525F] uppercase border-b border-[#1F1F24]">Search History</div>
-                        {searchHistory.map((term, i) => (
+
+              <div className="border-t border-zinc-900 px-4 py-3 text-xs text-zinc-500">
+                {files.length.toLocaleString("pt-BR")} arquivo(s) .log encontrado(s)
+              </div>
+            </aside>
+          )}
+
+          <section className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-zinc-900 bg-zinc-950/90">
+            <div className="border-b border-zinc-900 px-4 py-3">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+                <div className="relative flex-1">
+                  <div className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-2">
+                    <Search className="h-4 w-4 text-zinc-500" />
+                    <input
+                      ref={searchInputRef}
+                      value={searchTerm}
+                      onFocus={() => setShowSearchHistory(true)}
+                      onBlur={() => window.setTimeout(() => setShowSearchHistory(false), 180)}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          addSearchToHistory(searchTerm)
+                          setShowSearchHistory(false)
+                        }
+                      }}
+                      placeholder="Buscar no log por texto, regex, módulo, origem, mensagem..."
+                      className="w-full bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-600"
+                    />
+                    {searchTerm && (
+                      <button onClick={() => setSearchTerm("")} className="text-zinc-500 hover:text-zinc-200">
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {showSearchHistory && searchHistory.length > 0 && (
+                    <div className="absolute left-0 right-0 top-full z-20 mt-2 rounded-xl border border-zinc-800 bg-zinc-950 p-2 shadow-2xl">
+                      <div className="mb-2 px-2 text-[10px] uppercase tracking-[0.2em] text-zinc-500">Últimas buscas</div>
+                      <div className="space-y-1">
+                        {searchHistory.map((item) => (
                           <button
-                            key={i}
+                            key={item}
                             onClick={() => {
-                              setSearchTerm(term)
+                              setSearchTerm(item)
                               setShowSearchHistory(false)
                             }}
-                            className="w-full px-2 py-1.5 text-left text-xs font-mono text-[#E0E0E6] hover:bg-[#1A1A20] flex items-center gap-2"
+                            className="w-full rounded-lg px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
                           >
-                            <svg className="w-3 h-3 text-[#52525F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                            </svg>
-                            <span className="truncate">{term}</span>
+                            {item}
                           </button>
                         ))}
                       </div>
-                    )}
-                  </div>
-
-                  {/* Filter Button */}
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowFilterMenu(!showFilterMenu)}
-                      className={`px-2 py-1 text-[10px] font-mono border transition-all flex items-center gap-1 ${
-                        showFilterMenu 
-                          ? 'bg-[#00F0FF]/10 border-[#00F0FF] text-[#00F0FF]' 
-                          : 'bg-transparent border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF]'
-                      }`}
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
-                      </svg>
-                      FILTERS
-                      {activeFilterIds.size > 0 && (
-                        <span className="bg-[#00F0FF] text-black px-1 text-[8px] font-bold">{activeFilterIds.size}</span>
-                      )}
-                      {customFilters.length > 0 && activeFilterIds.size === 0 && (
-                        <span className="bg-[#52525F]/30 text-[#52525F] px-1 text-[8px] font-bold">{customFilters.length}</span>
-                      )}
-                    </button>
-
-                    {/* Filter Menu */}
-                    {showFilterMenu && (
-                      <div className="absolute top-full right-0 mt-1 w-72 bg-[#121216] border border-[#1F1F24] z-50">
-                        {/* Header */}
-                        <div className="px-3 py-2 border-b border-[#1F1F24] flex justify-between items-center">
-                          <span className="text-[9px] font-mono text-[#52525F] uppercase tracking-widest">Custom Filters</span>
-                          <button
-                            onClick={() => setShowFilterEditor(true)}
-                            className="text-[#52525F] hover:text-[#00F0FF] transition-colors"
-                            title="Editar filtros"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Filter List */}
-                        <div className="max-h-48 overflow-y-auto">
-                          {customFilters.length === 0 ? (
-                            <div className="px-3 py-4 text-center text-[9px] font-mono text-[#52525F]">
-                              Nenhum filtro personalizado
-                            </div>
-                          ) : (
-                            customFilters.map((filter) => {
-                              const isActive = activeFilterIds.has(filter.id)
-                              return (
-                                <button
-                                  key={filter.id}
-                                  onClick={() => toggleCustomFilter(filter)}
-                                  className={`w-full px-3 py-2 text-left flex items-center gap-2 border-b border-[#1F1F24]/50 transition-colors ${
-                                    isActive
-                                      ? "bg-[#1A1A20]"
-                                      : "hover:bg-[#1A1A20]/50"
-                                  }`}
-                                >
-                                  {/* Active indicator dot */}
-                                  <div
-                                    className={`w-2 h-2 flex-shrink-0 transition-all ${isActive ? "shadow-[0_0_6px_currentColor]" : "opacity-40"}`}
-                                    style={{ backgroundColor: filter.color }}
-                                  />
-                                  <div className="flex-1 min-w-0">
-                                    <div className={`text-[10px] font-mono truncate ${isActive ? "text-[#E0E0E6]" : "text-[#52525F]"}`}>
-                                      {filter.name}
-                                    </div>
-                                    <div className="text-[8px] font-mono text-[#52525F] truncate">{filter.regex}</div>
-                                  </div>
-                                  {/* Active badge */}
-                                  {isActive && (
-                                    <span
-                                      className="px-1 py-0.5 text-[7px] font-mono font-bold flex-shrink-0"
-                                      style={{ backgroundColor: `${filter.color}22`, color: filter.color }}
-                                    >
-                                      ON
-                                    </span>
-                                  )}
-                                </button>
-                              )
-                            })
-                          )}
-                        </div>
-
-                        {/* Add New Filter */}
-                        <div className="p-3 border-t border-[#1F1F24]">
-                          <div className="flex flex-col gap-2">
-                            <input
-                              type="text"
-                              placeholder="Nome do filtro..."
-                              value={newFilterName}
-                              onChange={(e) => setNewFilterName(e.target.value)}
-                              className="w-full bg-[#070709] border border-[#1F1F24] text-[#E0E0E6] px-2 py-1 text-[10px] font-mono focus:outline-none focus:border-[#00F0FF] placeholder:text-[#52525F]"
-                            />
-                            <input
-                              type="text"
-                              placeholder="Regex pattern..."
-                              value={newFilterRegex}
-                              onChange={(e) => setNewFilterRegex(e.target.value)}
-                              className="w-full bg-[#070709] border border-[#1F1F24] text-[#E0E0E6] px-2 py-1 text-[10px] font-mono focus:outline-none focus:border-[#00F0FF] placeholder:text-[#52525F]"
-                            />
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="color"
-                                value={newFilterColor}
-                                onChange={(e) => setNewFilterColor(e.target.value)}
-                                className="w-6 h-6 bg-transparent border border-[#1F1F24] cursor-pointer"
-                              />
-                              <span className="text-[8px] font-mono text-[#52525F]">Cor</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Footer Buttons */}
-                        <div className="p-2 border-t border-[#1F1F24] flex gap-1">
-                          <button
-                            onClick={addFilter}
-                            className="flex-1 px-2 py-1.5 text-[9px] font-mono bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/20 transition-colors"
-                          >
-                            + Add Filter
-                          </button>
-                          <label className="flex-1 px-2 py-1.5 text-[9px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:text-[#00F0FF] hover:border-[#00F0FF]/30 transition-colors text-center cursor-pointer">
-                            Import
-                            <input
-                              type="file"
-                              accept=".json"
-                              onChange={importFilters}
-                              className="hidden"
-                            />
-                          </label>
-                          <button
-                            onClick={exportFilters}
-                            disabled={customFilters.length === 0}
-                            className="flex-1 px-2 py-1.5 text-[9px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:text-[#00F0FF] hover:border-[#00F0FF]/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Export
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
-                
-                <div className="flex items-center gap-1">
-                  {["INFO", "DEBUG", "WARNING", "ERROR"].map((level) => (
+
+                <div className="flex flex-wrap gap-2">
+                  {SEARCH_MODES.map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setSearchMode(mode)}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-mono uppercase transition-colors",
+                        searchMode === mode ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-500",
+                      )}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                  <button onClick={saveCurrentSearch} className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                    <Save className="h-3.5 w-3.5" />
+                    salvar busca
+                  </button>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {LOG_LEVELS.map((level) => {
+                  const active = levelFilter.includes(level)
+
+                  return (
                     <button
                       key={level}
                       onClick={() => toggleLevel(level)}
-                      className={`px-2 py-0.5 text-[10px] font-mono border transition-all ${
-                        levelFilter.includes(level)
-                          ? getLevelBadge(level)
-                          : "text-[#52525F] border-[#1F1F24] bg-transparent opacity-50"
-                      }`}
+                      className={cn(
+                        "rounded-full border px-3 py-1.5 text-xs font-mono transition-colors",
+                        active ? getLevelBadgeClass(level) : "border-zinc-800 bg-zinc-950 text-zinc-500",
+                      )}
                     >
                       {level}
                     </button>
-                  ))}
-                </div>
+                  )
+                })}
+
+                <button onClick={clearAllViewControls} className="rounded-full border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-zinc-400 hover:border-zinc-700 hover:text-zinc-100">
+                  limpar visão
+                </button>
+                <button onClick={() => setShowOnlySelected((current) => !current)} className={cn("rounded-full border px-3 py-1.5 text-xs", showOnlySelected ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-200" : "border-zinc-800 bg-zinc-950 text-zinc-400")}>só selecionadas</button>
+                <button onClick={() => setShowOnlyMarked((current) => !current)} className={cn("rounded-full border px-3 py-1.5 text-xs", showOnlyMarked ? "border-amber-500/30 bg-amber-500/10 text-amber-200" : "border-zinc-800 bg-zinc-950 text-zinc-400")}>só marcadas</button>
               </div>
 
-              {/* Stats Bar */}
-              {stats && (
-                <div className="px-4 py-2 border-b border-[#1F1F24] bg-[#0d0d11] flex items-center gap-6 font-mono text-[10px]">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#52525F]">TOTAL:</span>
-                    <span className="text-[#E0E0E6]">{stats.total.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#52525F]">INFO:</span>
-                    <span className="text-[#00FF66]">{stats.info.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#52525F]">DEBUG:</span>
-                    <span className="text-[#52525F]">{stats.debug.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#52525F]">WARN:</span>
-                    <span className="text-[#FFB000]">{stats.warning.toLocaleString()}</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[#52525F]">ERROR:</span>
-                    <span className="text-[#FF2A2A]">{stats.error.toLocaleString()}</span>
-                  </div>
-                  <div className="ml-auto text-[#52525F]">
-                    Showing {Math.min(visibleCount, filteredEntries.length)} of {filteredEntries.length}
-                  </div>
-                </div>
-              )}
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-zinc-900 pt-3">
+                <button onClick={selectAllVisible} disabled={visibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                  <CheckSquare className="h-4 w-4" />
+                  selecionar visíveis
+                </button>
+                <button onClick={clearSelection} disabled={selectedLineIds.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                  <Square className="h-4 w-4" />
+                  limpar seleção
+                </button>
+                <button onClick={markSelectedLines} disabled={selectedLineIds.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-amber-500/40 hover:text-amber-200 disabled:opacity-50">
+                  <Star className="h-4 w-4" />
+                  marcar
+                </button>
+                <button onClick={hideSelectedLines} disabled={selectedLineIds.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-red-500/40 hover:text-red-200 disabled:opacity-50">
+                  <EyeOff className="h-4 w-4" />
+                  ocultar
+                </button>
+                <button onClick={clearHiddenLines} disabled={hiddenLineIds.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                  <RefreshCw className="h-4 w-4" />
+                  restaurar ocultas
+                </button>
+              </div>
+            </div>
 
-              {/* Log Lines */}
-              {loading ? (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="flex flex-col items-center gap-2">
-                    <svg className="w-6 h-6 text-[#00F0FF] animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    <span className="text-[#52525F] font-mono text-xs">LOADING...</span>
+            <div className="min-h-0 flex-1 px-4 py-4">
+              {!selectedFile ? (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 text-center">
+                  <div className="max-w-md px-6">
+                    <FolderOpen className="mx-auto h-8 w-8 text-cyan-400" />
+                    <div className="mt-4 text-lg font-medium text-zinc-100">Selecione uma pasta e depois um arquivo na árvore</div>
+                    <div className="mt-2 text-sm text-zinc-500">O foco aqui é o log: a maior parte da tela agora fica reservada para leitura, rolagem e seleção do arquivo.</div>
                   </div>
                 </div>
+              ) : loading ? (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-zinc-900 bg-zinc-950/50">
+                  <div className="text-center">
+                    <RefreshCw className="mx-auto h-6 w-6 animate-spin text-cyan-300" />
+                    <div className="mt-3 text-sm text-zinc-300">Carregando {selectedFile.name}...</div>
+                  </div>
+                </div>
+              ) : error ? (
+                <div className="flex h-full items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/5 px-6 text-center">
+                  <div>
+                    <AlertTriangle className="mx-auto h-6 w-6 text-red-300" />
+                    <div className="mt-3 text-sm text-red-200">{error}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex h-full min-h-0 flex-col overflow-hidden rounded-2xl border border-zinc-900 bg-black/30">
+                  <div className="grid grid-cols-[92px_84px_130px_150px_160px_minmax(0,1fr)] gap-3 border-b border-zinc-900 bg-zinc-950/90 px-4 py-3 text-[11px] uppercase tracking-[0.18em] text-zinc-500">
+                    <div>Ações / Linha</div>
+                    <div>Nível</div>
+                    <div>Tempo</div>
+                    <div>Módulo</div>
+                    <div>Origem</div>
+                    <div>Mensagem</div>
+                  </div>
+
+                  <div className="min-h-0 flex-1 overflow-auto">
+                    {visibleEntries.length === 0 ? (
+                      <div className="px-4 py-12 text-center text-sm text-zinc-500">Nenhuma linha corresponde aos filtros atuais.</div>
                     ) : (
-                      <div ref={logsContainerRef} className="flex-1 overflow-y-auto font-mono text-[12px] leading-relaxed select-text cursor-text">
-                      {filteredEntries.slice(0, visibleCount).map((entry, idx) => (
-                        <div
+                      visibleEntries.slice(0, visibleCount).map((entry) => (
+                        <LogRow
                           key={entry.id}
-                          data-entry-id={idx}
-                          className={`flex hover:bg-[#1A1A20] border-b border-transparent hover:border-[#1F1F24] transition-colors group px-2 ${
-                        entry.level === "ERROR" ? "bg-[#FF2A2A]/5" : 
-                        entry.level === "WARNING" ? "bg-[#FFB000]/5" : ""
-                      }`}
-                    >
-                      <div className={`w-12 shrink-0 text-right pr-3 select-none flex items-center justify-end ${
-                        entry.level === "ERROR" ? "text-[#FF2A2A]" : "text-[#52525F]"
-                      }`}>
-                        {entry.id}
-                      </div>
-                      <div className="w-14 shrink-0 flex items-center">
-                        <span className={`px-1 py-0.5 border text-[10px] ${getLevelBadge(entry.level)} ${
-                          entry.level === "ERROR" ? "animate-pulse" : ""
-                        }`}>
-                          {entry.level}
-                        </span>
-                      </div>
-                      <div className="w-44 shrink-0 text-[#52525F] whitespace-nowrap">{entry.timestamp}</div>
-                      <div className={`flex-1 break-all ${entry.level === "ERROR" ? "text-[#FF2A2A]" : "text-[#E0E0E6]"}`}>
-                        {entry.message}
-                      </div>
-                    </div>
-                  ))}
+                          entry={entry}
+                          selected={selectedLineIds.includes(entry.id)}
+                          marked={markedLineIds.includes(entry.id)}
+                          onToggleSelect={() => toggleLineSelection(entry.id)}
+                          onToggleMark={() => toggleLineMark(entry.id)}
+                          onHide={() => hideLine(entry.id)}
+                        />
+                      ))
+                    )}
+                  </div>
 
-                  {visibleCount >= filteredEntries.length && filteredEntries.length > 0 && (
-                    <div className="p-4 text-center border-t border-[#1F1F24]">
-                      <p className="text-[#00F0FF] font-mono text-xs tracking-widest">
-                        [ END OF FILE ]
-                      </p>
+                  {visibleCount < visibleEntries.length && (
+                    <div className="border-t border-zinc-900 p-4 text-center">
+                      <button onClick={() => setVisibleCount((current) => current + INITIAL_VISIBLE_ROWS)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm text-zinc-300 transition-colors hover:border-zinc-700 hover:bg-zinc-900">
+                        Carregar mais linhas ({Math.max(visibleEntries.length - visibleCount, 0).toLocaleString("pt-BR")} restantes)
+                      </button>
                     </div>
                   )}
-
-                  {/* Auto-load trigger */}
-                  <div ref={loadMoreRef} className="h-1" />
                 </div>
               )}
-            </>
+            </div>
+          </section>
+
+          {inspectorOpen && (
+            <aside className="flex w-[360px] min-w-[340px] flex-col gap-3 overflow-auto rounded-2xl border border-zinc-900 bg-zinc-950/90 p-3">
+              <SectionCard title="Resumo" open={openSections.includes("summary")} onToggle={() => toggleSection("summary")}>
+                {selectedFile ? (
+                  <div className="space-y-3 text-sm text-zinc-300">
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">Arquivo selecionado</div>
+                      <div className="mt-2 break-all font-medium text-zinc-100">{selectedFile.relativePath}</div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-zinc-500">
+                        <span>{formatFileSize(selectedFile.size)}</span>
+                        <span>{formatModified(selectedFile.modified)}</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <MetricCard label="Total" value={stats?.total ?? 0} />
+                      <MetricCard label="Unknown" value={stats?.unknown ?? 0} />
+                      <MetricCard label="Errors" value={stats?.error ?? 0} tone="error" />
+                      <MetricCard label="Warnings" value={stats?.warning ?? 0} tone="warning" />
+                      <MetricCard label="Visíveis" value={visibleEntries.length} tone="info" />
+                      <MetricCard label="Seleção" value={selectedVisibleEntries.length} tone="success" />
+                    </div>
+
+                    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-3">
+                      <div className="text-xs uppercase tracking-[0.18em] text-zinc-500">Janela temporal</div>
+                      <div className="mt-3 space-y-2 font-mono text-xs text-zinc-300">
+                        <div className="flex items-center justify-between gap-3"><span className="text-zinc-500">Início</span><span>{stats?.firstTs ? formatTimestampSlice(stats.firstTs) : "-"}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span className="text-zinc-500">Fim</span><span>{stats?.lastTs ? formatTimestampSlice(stats.lastTs) : "-"}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span className="text-zinc-500">Delta máx.</span><span>{formatDuration(stats?.execTime.max ?? 0)}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span className="text-zinc-500">Delta mín.</span><span>{formatDuration(stats?.execTime.min ?? 0)}</span></div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-dashed border-zinc-800 px-4 py-8 text-center text-sm text-zinc-500">Nenhum arquivo carregado.</div>
+                )}
+              </SectionCard>
+
+              <SectionCard title="Filtros" open={openSections.includes("filters")} onToggle={() => toggleSection("filters")}>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-[1fr_1fr_auto] gap-2">
+                    <input value={newFilterName} onChange={(event) => setNewFilterName(event.target.value)} placeholder="Nome" className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-500/50" />
+                    <input value={newFilterPattern} onChange={(event) => setNewFilterPattern(event.target.value)} placeholder="Regex ou texto" className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-cyan-500/50" />
+                    <input type="color" value={newFilterColor} onChange={(event) => setNewFilterColor(event.target.value)} className="h-10 w-12 rounded-lg border border-zinc-800 bg-zinc-950 p-1" />
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button onClick={addCustomFilter} className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20">
+                      <Filter className="h-4 w-4" />
+                      Adicionar
+                    </button>
+                    <button onClick={() => filterImportRef.current?.click()} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                      <Upload className="h-4 w-4" />
+                      Importar
+                    </button>
+                    <button onClick={handleExportFilters} disabled={customFilters.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                      <Download className="h-4 w-4" />
+                      Exportar
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {customFilters.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-4 text-xs text-zinc-500">Nenhum filtro salvo.</div>
+                    ) : (
+                      customFilters.map((filter) => {
+                        const active = activeFilterIds.includes(filter.id)
+
+                        return (
+                          <div key={filter.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                            <button onClick={() => toggleCustomFilter(filter.id)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: filter.color }} />
+                              <div className="min-w-0">
+                                <div className={cn("truncate text-sm", active ? "text-zinc-100" : "text-zinc-400")}>{filter.name}</div>
+                                <div className="truncate font-mono text-[11px] text-zinc-500">{filter.pattern}</div>
+                              </div>
+                            </button>
+                            <button onClick={() => removeCustomFilter(filter.id)} className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:border-red-500/40 hover:text-red-300">
+                              remover
+                            </button>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Buscas salvas" open={openSections.includes("searches")} onToggle={() => toggleSection("searches")}>
+                <div className="space-y-3">
+                  <button onClick={saveCurrentSearch} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900">
+                    <Save className="h-4 w-4" />
+                    salvar busca atual
+                  </button>
+
+                  <div className="space-y-2">
+                    {savedSearches.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-4 text-xs text-zinc-500">Nenhuma busca salva.</div>
+                    ) : (
+                      savedSearches.map((savedSearch) => (
+                        <div key={savedSearch.id} className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                          <button onClick={() => applySavedSearch(savedSearch)} className="min-w-0 flex-1 text-left">
+                            <div className="truncate text-sm text-zinc-100">{savedSearch.name}</div>
+                            <div className="truncate font-mono text-[11px] text-zinc-500">{savedSearch.query}</div>
+                          </button>
+                          <button onClick={() => removeSavedSearch(savedSearch.id)} className="rounded-md border border-zinc-800 px-2 py-1 text-[11px] text-zinc-400 hover:border-red-500/40 hover:text-red-300">
+                            remover
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Módulos com mais impacto" open={openSections.includes("modules")} onToggle={() => toggleSection("modules")}>
+                <div className="space-y-2">
+                  {stats?.topModules.length ? (
+                    stats.topModules.map((module) => (
+                      <button key={module.name} onClick={() => usePatternAsSearch(module.name)} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-left hover:border-cyan-500/30 hover:bg-zinc-900">
+                        <div className="truncate text-sm font-medium text-zinc-100">{module.name}</div>
+                        <div className="mt-2 grid grid-cols-3 gap-2 text-xs text-zinc-500">
+                          <div><span className="text-zinc-400">total</span><div className="mt-1 text-zinc-100">{module.total}</div></div>
+                          <div><span className="text-zinc-400">warn</span><div className="mt-1 text-amber-200">{module.warnings}</div></div>
+                          <div><span className="text-zinc-400">error</span><div className="mt-1 text-red-300">{module.errors}</div></div>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-sm text-zinc-500">Sem módulos suficientes para ranking.</div>
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Padrões de reject / falha" open={openSections.includes("patterns")} onToggle={() => toggleSection("patterns")}>
+                <div className="space-y-2">
+                  {stats?.rejectPatterns.length ? (
+                    stats.rejectPatterns.map((pattern) => (
+                      <button key={pattern.id} onClick={() => usePatternAsSearch(pattern.sample)} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-left hover:border-cyan-500/30 hover:bg-zinc-900">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className={cn("rounded border px-2 py-0.5 font-mono text-[10px]", getLevelBadgeClass(pattern.level))}>{pattern.level}</span>
+                          <span className="font-mono text-[11px] text-zinc-500">{pattern.count}x</span>
+                        </div>
+                        <div className="mt-2 line-clamp-3 text-sm text-zinc-100">{pattern.sample}</div>
+                        <div className="mt-2 flex items-center justify-between gap-3 text-[11px] text-zinc-500">
+                          <span className="truncate">{pattern.module || pattern.source || "sem origem"}</span>
+                          <span>linhas {pattern.lineIds.slice(0, 3).join(", ")}</span>
+                        </div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-sm text-zinc-500">Nenhum padrão recorrente encontrado.</div>
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Alertas recentes" open={openSections.includes("alerts")} onToggle={() => toggleSection("alerts")}>
+                <div className="space-y-2">
+                  {stats?.anomalies.length ? (
+                    stats.anomalies.map((anomaly) => (
+                      <button key={anomaly.id} onClick={() => setSearchTerm(anomaly.message)} className={cn("w-full rounded-lg border p-3 text-left", anomaly.level === "ERROR" ? "border-red-500/20 bg-red-500/5" : "border-amber-500/20 bg-amber-500/5")}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span className={cn("rounded border px-2 py-0.5 font-mono text-[10px]", getLevelBadgeClass(anomaly.level))}>{anomaly.level}</span>
+                          <span className="font-mono text-[11px] text-zinc-500">linha {anomaly.index}</span>
+                        </div>
+                        <div className="mt-2 text-sm text-zinc-100">{anomaly.message}</div>
+                        <div className="mt-2 text-[11px] text-zinc-500">{anomaly.module || formatTimestampSlice(anomaly.timestamp)}</div>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-zinc-800 px-3 py-6 text-sm text-zinc-500">Nenhum warning/error recente.</div>
+                  )}
+                </div>
+              </SectionCard>
+
+              <SectionCard title="Exportação / IA" open={openSections.includes("exports")} onToggle={() => toggleSection("exports")}>
+                <div className="grid gap-2">
+                  <button onClick={exportSelectedAsText} disabled={selectedVisibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <Download className="h-4 w-4" />
+                    exportar seleção txt
+                  </button>
+                  <button onClick={exportSelectedAsJson} disabled={selectedVisibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <Save className="h-4 w-4" />
+                    exportar seleção json
+                  </button>
+                  <button onClick={exportVisibleAsText} disabled={visibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <FileText className="h-4 w-4" />
+                    salvar visíveis txt
+                  </button>
+                  <button onClick={exportVisibleAsJson} disabled={visibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <Bookmark className="h-4 w-4" />
+                    salvar visíveis json
+                  </button>
+                  <button onClick={copySelectedForAi} disabled={selectedVisibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-50">
+                    <Sparkles className="h-4 w-4" />
+                    copiar payload IA
+                  </button>
+                  <button onClick={() => copyText(visibleEntries.map((entry) => `${entry.id}\t${entry.message || entry.raw}`).join("\n"), "Linhas visíveis copiadas.")} disabled={visibleEntries.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <Copy className="h-4 w-4" />
+                    copiar linhas visíveis
+                  </button>
+                  <button onClick={() => copyText(markedLineIds.join(", "), "IDs marcados copiados.")} disabled={markedLineIds.length === 0} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-700 hover:bg-zinc-900 disabled:opacity-50">
+                    <Highlighter className="h-4 w-4" />
+                    copiar ids marcados
+                  </button>
+                </div>
+              </SectionCard>
+            </aside>
           )}
-        </section>
-
-        {/* Quick Stats Toggle Tab (always visible when file is selected) */}
-        {selectedFile && stats && !statsOpen && (
-          <button
-            onClick={() => setStatsOpen(true)}
-            className="w-8 bg-[#121216] border-l border-[#1F1F24] flex flex-col items-center justify-start pt-4 shrink-0 hover:bg-[#1A1A20] transition-colors group"
-            title="Abrir Quick Stats"
-          >
-            <svg className="w-3.5 h-3.5 text-[#52525F] group-hover:text-[#00F0FF] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <span className="text-[#52525F] font-mono text-[8px] tracking-widest mt-2 [writing-mode:vertical-rl] group-hover:text-[#00F0FF] transition-colors">STATS</span>
-          </button>
-        )}
-
-        {/* Right Sidebar: Quick Stats */}
-        {selectedFile && stats && statsOpen && (
-          <aside className="w-[280px] bg-[#121216] border-l border-[#1F1F24] flex flex-col shrink-0 overflow-y-auto">
-
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-[#1F1F24] flex justify-between items-center sticky top-0 bg-[#121216] z-10">
-              <span className="text-[11px] font-bold uppercase tracking-widest text-[#E0E0E6] font-mono">QUICK_STATS</span>
-              <button
-                onClick={() => setStatsOpen(false)}
-                className="text-[#52525F] hover:text-[#00F0FF] transition-colors"
-                title="Fechar Quick Stats"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 5l7 7-7 7M5 5l7 7-7 7" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Health Distribution (Donut) */}
-            <div className="p-4 border-b border-[#1F1F24]">
-              <div className="text-[9px] font-mono text-[#52525F] mb-3 uppercase tracking-widest">System_Health_Distribution</div>
-              <div className="relative flex justify-center items-center py-3">
-                <svg className="w-32 h-32 -rotate-90">
-                  <circle cx="64" cy="64" r="54" fill="transparent" stroke="#1F1F24" strokeWidth="8" />
-                  <circle cx="64" cy="64" r="54" fill="transparent" stroke="#00FF66" strokeWidth="12"
-                    strokeDasharray={`${(stats.info / stats.total) * 339} 339`}
-                    strokeDashoffset="0" />
-                  <circle cx="64" cy="64" r="54" fill="transparent" stroke="#FFB000" strokeWidth="12"
-                    strokeDasharray={`${(stats.warning / stats.total) * 339} 339`}
-                    strokeDashoffset={`${-((stats.info / stats.total) * 339)}`} />
-                  <circle cx="64" cy="64" r="54" fill="transparent" stroke="#FF2A2A" strokeWidth="12"
-                    strokeDasharray={`${(stats.error / stats.total) * 339} 339`}
-                    strokeDashoffset={`${-(((stats.info + stats.warning) / stats.total) * 339)}`} />
-                </svg>
-                <div className="absolute inset-0 flex flex-col justify-center items-center">
-                  <span className="font-mono text-lg font-bold text-[#E0E0E6]">
-                    {stats.total > 0 ? ((1 - stats.error / stats.total) * 100).toFixed(1) : 0}%
-                  </span>
-                  <span className="font-mono text-[8px] text-[#00FF66]">STABLE</span>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 gap-2 mt-2">
-                <div className="flex flex-col">
-                  <span className="text-[8px] font-mono text-[#52525F]">INFO</span>
-                  <span className="text-[11px] font-mono text-[#00FF66]">{stats.info >= 1000 ? `${(stats.info/1000).toFixed(1)}K` : stats.info}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[8px] font-mono text-[#52525F]">WARN</span>
-                  <span className="text-[11px] font-mono text-[#FFB000]">{stats.warning}</span>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-[8px] font-mono text-[#52525F]">ERROR</span>
-                  <span className="text-[11px] font-mono text-[#FF2A2A]">{stats.error}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Time Selector Navigation */}
-            <div className="p-4 border-b border-[#1F1F24]">
-              <div className="flex justify-between items-center mb-3">
-                <div className="text-[9px] font-mono text-[#52525F] uppercase tracking-widest">Time_Navigator</div>
-                <span className="text-[8px] font-mono text-[#00F0FF]">SEEK</span>
-              </div>
-
-              {stats.firstTs && stats.lastTs && filteredEntries.length > 0 ? (
-                <div className="flex flex-col gap-3">
-                  {/* Current position display */}
-                  <div className="bg-[#1A1A20] border border-[#00F0FF]/30 p-3">
-                    <div className="text-[9px] font-mono text-[#52525F] mb-1">CURRENT_POSITION</div>
-                    <div className="text-[14px] font-mono text-[#00F0FF] font-bold tracking-wider">
-                      {(() => {
-                        const idx = Math.floor((sliderValue / 100) * (filteredEntries.length - 1))
-                        const entry = filteredEntries[idx]
-                        if (entry?.timestamp) {
-                          // Extract time part: 20260315T000334.143 -> 000334.143
-                          const match = entry.timestamp.match(/T(\d{6}\.\d{3})/)
-                          return match ? match[1] : entry.timestamp
-                        }
-                        return "-------.---"
-                      })()}
-                    </div>
-                    <div className="text-[9px] font-mono text-[#52525F] mt-1">
-                      Linha {Math.floor((sliderValue / 100) * (filteredEntries.length - 1)) + 1} / {filteredEntries.length}
-                    </div>
-                  </div>
-
-                  {/* Time range display */}
-                  <div className="flex justify-between items-center gap-2">
-                    <div className="flex-1">
-                      <div className="text-[8px] font-mono text-[#52525F]">START</div>
-                      <div className="text-[10px] font-mono text-[#00FF66]">
-                        {(() => {
-                          const match = stats.firstTs.match(/T(\d{6}\.\d{3})/)
-                          return match ? match[1] : stats.firstTs
-                        })()}
-                      </div>
-                    </div>
-                    <div className="w-px h-6 bg-[#1F1F24]"></div>
-                    <div className="flex-1 text-right">
-                      <div className="text-[8px] font-mono text-[#52525F]">END</div>
-                      <div className="text-[10px] font-mono text-[#FF2A2A]">
-                        {(() => {
-                          const match = stats.lastTs.match(/T(\d{6}\.\d{3})/)
-                          return match ? match[1] : stats.lastTs
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Single timeline slider */}
-                  <div className="mt-1">
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      step="0.1"
-                      value={sliderValue}
-                      className="w-full h-2 bg-[#1F1F24] accent-[#00F0FF] cursor-pointer appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-[#00F0FF] [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,240,255,0.6)] [&::-webkit-slider-thumb]:cursor-grab [&::-webkit-slider-thumb]:active:cursor-grabbing"
-                      onChange={(e) => updateSliderValue(parseFloat(e.target.value))}
-                      onMouseUp={(e) => jumpToPosition(parseFloat((e.target as HTMLInputElement).value))}
-                      onTouchEnd={(e) => jumpToPosition(parseFloat((e.target as HTMLInputElement).value))}
-                    />
-                    <div className="flex justify-between mt-1">
-                      <span className="text-[8px] font-mono text-[#52525F]">0%</span>
-                      <span className="text-[9px] font-mono text-[#00F0FF] font-bold">{sliderValue.toFixed(1)}%</span>
-                      <span className="text-[8px] font-mono text-[#52525F]">100%</span>
-                    </div>
-                  </div>
-
-                  {/* Quick jump buttons */}
-                  <div className="flex gap-1 mt-1">
-                    <button
-                      onClick={() => jumpToPosition(0)}
-                      className="flex-1 px-2 py-1 text-[8px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF] transition-colors"
-                    >
-                      START
-                    </button>
-                    <button
-                      onClick={() => jumpToPosition(25)}
-                      className="flex-1 px-2 py-1 text-[8px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF] transition-colors"
-                    >
-                      25%
-                    </button>
-                    <button
-                      onClick={() => jumpToPosition(50)}
-                      className="flex-1 px-2 py-1 text-[8px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF] transition-colors"
-                    >
-                      50%
-                    </button>
-                    <button
-                      onClick={() => jumpToPosition(75)}
-                      className="flex-1 px-2 py-1 text-[8px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF] transition-colors"
-                    >
-                      75%
-                    </button>
-                    <button
-                      onClick={() => jumpToPosition(100)}
-                      className="flex-1 px-2 py-1 text-[8px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:border-[#00F0FF] hover:text-[#00F0FF] transition-colors"
-                    >
-                      END
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-[9px] font-mono text-[#52525F] text-center py-4">
-                  Selecione um arquivo de log
-                </div>
-              )}
-            </div>
-
-            {/* Critical Anomalies */}
-            {stats.anomalies.length > 0 && (
-              <div className="p-4">
-                <div className="text-[9px] font-mono text-[#52525F] mb-3 uppercase tracking-widest">Critical_Anomalies</div>
-                <div className="flex flex-col gap-2">
-                  {stats.anomalies.map((a, i) => (
-                    <button
-                      key={a.id}
-                      onClick={() => jumpToLine(a.index)}
-                      className={`bg-[#1A1A20] p-2.5 border border-[#1F1F24] hover:border-[#FF2A2A] hover:bg-[#1F1F24] transition-colors group text-left cursor-pointer ${i >= 2 ? 'opacity-50 hover:opacity-100' : ''}`}
-                      title={`Ir para linha ${a.index}`}
-                    >
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="text-[9px] font-mono text-[#FF2A2A] font-bold">#{a.id}</span>
-                        <span className="bg-[#FF2A2A]/10 text-[#FF2A2A] px-1 py-0.5 text-[8px] font-mono font-bold">
-                          {i === 0 ? "NEW" : i === 1 ? "01" : "OK"}
-                        </span>
-                      </div>
-                      <p className="text-[10px] font-mono text-[#E0E0E6] leading-tight break-all">{a.message.slice(0, 60)}{a.message.length > 60 ? "..." : ""}</p>
-                      <div className="mt-1.5 flex justify-between items-center">
-                        <span className="text-[8px] font-mono text-[#52525F] truncate max-w-[160px]">{a.module || a.timestamp.slice(11, 19)}</span>
-                        {i >= 2 && <span className="text-[8px] font-mono text-[#52525F]">RESOLVED</span>}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Footer */}
-            <div className="p-3 mt-auto border-t border-[#1F1F24] flex justify-between items-center bg-[#0d0d11] sticky bottom-0">
-              <div className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 bg-[#00FF66] rounded-full animate-pulse" />
-                <span className="text-[9px] font-mono text-[#00FF66] uppercase">Node_Secure</span>
-              </div>
-              <span className="text-[9px] font-mono text-[#52525F] uppercase">ID: ZX-00-88</span>
-            </div>
-          </aside>
-        )}
-      </main>
-
-      {/* Footer */}
-      <footer className="h-7 bg-[#121216] border-t border-[#1F1F24] flex items-center px-4 shrink-0 font-mono text-[10px] justify-between relative z-10">
-        <div className="flex items-center gap-3 text-[#52525F]">
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <span className="opacity-50">Press &apos;/&apos; to focus Regex Filter Console...</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="px-1.5 py-0.5 border border-[#1F1F24] text-[#52525F] bg-[#070709]">.*</div>
-          <div className="px-1.5 py-0.5 border border-[#1F1F24] text-[#52525F] bg-[#070709]">Aa</div>
-        </div>
-      </footer>
-
-      {/* Filter Editor Modal */}
-      {showFilterEditor && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50" onClick={() => setShowFilterEditor(false)}>
-          <div className="bg-[#121216] border border-[#1F1F24] w-[500px] max-h-[80vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-[#1F1F24] flex justify-between items-center">
-              <span className="text-[11px] font-mono text-[#E0E0E6] uppercase tracking-widest">Filter Editor</span>
-              <button
-                onClick={() => setShowFilterEditor(false)}
-                className="text-[#52525F] hover:text-[#FF2A2A] transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Filter List */}
-            <div className="max-h-[60vh] overflow-y-auto p-4">
-              {customFilters.length === 0 ? (
-                <div className="text-center py-8 text-[#52525F] font-mono text-xs">
-                  Nenhum filtro para editar
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3">
-                  {customFilters.map((filter) => (
-                    <div key={filter.id} className="bg-[#1A1A20] border border-[#1F1F24] p-3">
-                      {editingFilter?.id === filter.id ? (
-                        // Edit Mode
-                        <div className="flex flex-col gap-2">
-                          <input
-                            type="text"
-                            value={editingFilter.name}
-                            onChange={(e) => setEditingFilter({...editingFilter, name: e.target.value})}
-                            className="w-full bg-[#070709] border border-[#1F1F24] text-[#E0E0E6] px-2 py-1 text-[10px] font-mono focus:outline-none focus:border-[#00F0FF]"
-                          />
-                          <input
-                            type="text"
-                            value={editingFilter.regex}
-                            onChange={(e) => setEditingFilter({...editingFilter, regex: e.target.value})}
-                            className="w-full bg-[#070709] border border-[#1F1F24] text-[#E0E0E6] px-2 py-1 text-[10px] font-mono focus:outline-none focus:border-[#00F0FF]"
-                          />
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="color"
-                              value={editingFilter.color}
-                              onChange={(e) => setEditingFilter({...editingFilter, color: e.target.value})}
-                              className="w-6 h-6 bg-transparent border border-[#1F1F24] cursor-pointer"
-                            />
-                            <button
-                              onClick={() => updateFilter(editingFilter)}
-                              className="px-2 py-1 text-[9px] font-mono bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/20"
-                            >
-                              Salvar
-                            </button>
-                            <button
-                              onClick={() => setEditingFilter(null)}
-                              className="px-2 py-1 text-[9px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:text-[#E0E0E6]"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        // View Mode
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-3 h-3" style={{ backgroundColor: filter.color }} />
-                            <div>
-                              <div className="text-[10px] font-mono text-[#E0E0E6]">{filter.name}</div>
-                              <div className="text-[8px] font-mono text-[#52525F]">{filter.regex}</div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => setEditingFilter(filter)}
-                              className="p-1 text-[#52525F] hover:text-[#00F0FF] transition-colors"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={() => deleteFilter(filter.id)}
-                              className="p-1 text-[#52525F] hover:text-[#FF2A2A] transition-colors"
-                            >
-                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                              </svg>
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Import Conflict Modal */}
-      {showImportConflict && importConflicts.length > 0 && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-          <div className="bg-[#121216] border border-[#1F1F24] w-[600px] max-h-[80vh] overflow-hidden">
-            {/* Header */}
-            <div className="px-4 py-3 border-b border-[#1F1F24] flex justify-between items-center">
-              <span className="text-[11px] font-mono text-[#FFB000] uppercase tracking-widest flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
-                Conflito de Importação ({currentConflictIndex + 1}/{importConflicts.length})
-              </span>
-              <button
-                onClick={() => { setShowImportConflict(false); setImportConflicts([]) }}
-                className="text-[#52525F] hover:text-[#FF2A2A] transition-colors"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-
-            {/* Conflict Content */}
-            <div className="p-4">
-              <div className="text-[10px] font-mono text-[#E0E0E6] mb-4">
-                O filtro <span className="text-[#00F0FF]">&quot;{importConflicts[currentConflictIndex].existing.name}&quot;</span> já existe. Deseja sobrescrever?
-              </div>
-
-              {/* Compare View */}
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                {/* Current */}
-                <div className="bg-[#1A1A20] border border-[#1F1F24] p-3">
-                  <div className="text-[9px] font-mono text-[#52525F] uppercase mb-2">Filtro Atual</div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-3 h-3" style={{ backgroundColor: importConflicts[currentConflictIndex].existing.color }} />
-                    <span className="text-[10px] font-mono text-[#E0E0E6]">{importConflicts[currentConflictIndex].existing.name}</span>
-                  </div>
-                  <div className="text-[9px] font-mono text-[#52525F] bg-[#070709] p-2 border border-[#1F1F24]">
-                    {importConflicts[currentConflictIndex].existing.regex}
-                  </div>
-                </div>
-
-                {/* Incoming */}
-                <div className="bg-[#1A1A20] border border-[#00F0FF]/30 p-3">
-                  <div className="text-[9px] font-mono text-[#00F0FF] uppercase mb-2">Filtro Novo</div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-3 h-3" style={{ backgroundColor: importConflicts[currentConflictIndex].incoming.color }} />
-                    <span className="text-[10px] font-mono text-[#E0E0E6]">{importConflicts[currentConflictIndex].incoming.name}</span>
-                  </div>
-                  <div className="text-[9px] font-mono text-[#52525F] bg-[#070709] p-2 border border-[#1F1F24]">
-                    {importConflicts[currentConflictIndex].incoming.regex}
-                  </div>
-                </div>
-              </div>
-
-              {/* Diff Highlight */}
-              {importConflicts[currentConflictIndex].existing.regex !== importConflicts[currentConflictIndex].incoming.regex && (
-                <div className="bg-[#FFB000]/10 border border-[#FFB000]/30 p-2 mb-4">
-                  <div className="text-[8px] font-mono text-[#FFB000] uppercase mb-1">Diferença</div>
-                  <div className="text-[9px] font-mono text-[#E0E0E6]">
-                    <span className="text-[#FF2A2A] line-through">{importConflicts[currentConflictIndex].existing.regex}</span>
-                    <span className="mx-2">→</span>
-                    <span className="text-[#00FF66]">{importConflicts[currentConflictIndex].incoming.regex}</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Apply to All Checkbox */}
-              {importConflicts.length > 1 && (
-                <label className="flex items-center gap-2 mb-4 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={applyToAll}
-                    onChange={(e) => setApplyToAll(e.target.checked)}
-                    className="w-3 h-3 accent-[#00F0FF]"
-                  />
-                  <span className="text-[9px] font-mono text-[#52525F]">
-                    Aplicar mesma ação para todos os {importConflicts.length - currentConflictIndex} conflitos restantes
-                  </span>
-                </label>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-2">
-                <button
-                  onClick={() => resolveConflict(true)}
-                  className="flex-1 px-3 py-2 text-[10px] font-mono bg-[#00F0FF]/10 border border-[#00F0FF]/30 text-[#00F0FF] hover:bg-[#00F0FF]/20 transition-colors"
-                >
-                  Sobrescrever
-                </button>
-                <button
-                  onClick={() => resolveConflict(false)}
-                  className="flex-1 px-3 py-2 text-[10px] font-mono bg-[#1A1A20] border border-[#1F1F24] text-[#52525F] hover:text-[#E0E0E6] transition-colors"
-                >
-                  Manter Atual
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        @keyframes scan {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(100%); }
-        }
-        
-        /* Custom Scrollbar */
-        ::-webkit-scrollbar {
-          width: 4px;
-          height: 4px;
-        }
-        ::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        ::-webkit-scrollbar-thumb {
-          background: #52525F;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-          background: #E0E0E6;
-        }
-      `}</style>
+      </div>
     </div>
   )
 }

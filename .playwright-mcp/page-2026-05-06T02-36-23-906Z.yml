@@ -1,0 +1,160 @@
+- generic [ref=e4]:
+  - banner [ref=e5]:
+    - generic [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - img [ref=e10]
+          - generic [ref=e12]:
+            - generic [ref=e13]: Local Log Analyzer
+            - heading "McDonald's PXT Log Workspace" [level=1] [ref=e14]
+        - generic [ref=e15]:
+          - generic [ref=e16]: "pasta: Nenhuma pasta selecionada"
+          - generic [ref=e17]: "selecionadas: 0"
+          - generic [ref=e18]: "ocultas: 0"
+          - generic [ref=e19]: "marcadas: 0"
+      - generic [ref=e20]:
+        - button "Selecionar pasta" [ref=e21] [cursor=pointer]:
+          - img [ref=e22]
+          - text: Selecionar pasta
+        - button "Trocar pasta" [ref=e24] [cursor=pointer]:
+          - img [ref=e25]
+          - text: Trocar pasta
+  - main [ref=e30]:
+    - complementary [ref=e31]:
+      - generic [ref=e32]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - generic [ref=e35]: Explorer
+            - generic [ref=e36]: Arquivos encontrados na pasta local
+          - generic [ref=e37]: "0"
+        - generic [ref=e39]:
+          - img [ref=e40]
+          - generic [ref=e43]: Selecione uma pasta com arquivos .log.
+          - generic [ref=e44]: O app lista e abre os logs diretamente do diretório escolhido.
+      - generic [ref=e45]:
+        - generic [ref=e46]: Filtros customizados
+        - generic [ref=e47]:
+          - generic [ref=e48]:
+            - textbox "Nome" [ref=e49]
+            - textbox "Regex ou texto" [ref=e50]
+            - textbox [ref=e51]: "#22d3ee"
+          - generic [ref=e52]:
+            - button "Adicionar" [ref=e53] [cursor=pointer]:
+              - img [ref=e54]
+              - text: Adicionar
+            - button "Importar" [ref=e56] [cursor=pointer]:
+              - img [ref=e57]
+              - text: Importar
+            - button "Exportar" [disabled] [ref=e60]:
+              - img [ref=e61]
+              - text: Exportar
+          - generic [ref=e65]: Nenhum filtro salvo.
+      - generic [ref=e66]:
+        - generic [ref=e67]:
+          - generic [ref=e68]: Buscas salvas
+          - button "salvar atual" [ref=e69] [cursor=pointer]
+        - generic [ref=e71]: Nenhuma busca salva.
+    - generic [ref=e72]:
+      - generic [ref=e74]:
+        - generic [ref=e75]:
+          - generic [ref=e77]:
+            - img [ref=e78]
+            - textbox "Buscar por texto, regex, módulo, mensagem, origem..." [ref=e81]
+          - generic [ref=e82]:
+            - button "smart" [ref=e83] [cursor=pointer]
+            - button "text" [ref=e84] [cursor=pointer]
+            - button "regex" [ref=e85] [cursor=pointer]
+            - button "salvar busca" [ref=e86] [cursor=pointer]:
+              - img [ref=e87]
+              - text: salvar busca
+        - generic [ref=e91]:
+          - button "INFO" [ref=e92] [cursor=pointer]
+          - button "DEBUG" [ref=e93] [cursor=pointer]
+          - button "WARNING" [ref=e94] [cursor=pointer]
+          - button "ERROR" [ref=e95] [cursor=pointer]
+          - button "UNKNOWN" [ref=e96] [cursor=pointer]
+          - button "limpar visão" [ref=e97] [cursor=pointer]
+          - button "só selecionadas" [ref=e98] [cursor=pointer]
+          - button "só marcadas" [ref=e99] [cursor=pointer]
+      - generic [ref=e101]:
+        - generic [ref=e102]:
+          - generic [ref=e103]: Entradas base
+          - generic [ref=e104]: "0"
+        - generic [ref=e105]:
+          - generic [ref=e106]: Visíveis
+          - generic [ref=e107]: "0"
+        - generic [ref=e108]:
+          - generic [ref=e109]: Selecionadas
+          - generic [ref=e110]: "0"
+        - generic [ref=e111]:
+          - generic [ref=e112]: Ocultas
+          - generic [ref=e113]: "0"
+        - generic [ref=e114]:
+          - generic [ref=e115]: Errors
+          - generic [ref=e116]: "0"
+        - generic [ref=e117]:
+          - generic [ref=e118]: Warnings
+          - generic [ref=e119]: "0"
+        - generic [ref=e120]:
+          - generic [ref=e121]: Delta médio
+          - generic [ref=e122]: "-"
+      - generic [ref=e124]:
+        - button "selecionar visíveis" [disabled] [ref=e125]:
+          - img [ref=e126]
+          - text: selecionar visíveis
+        - button "limpar seleção" [disabled] [ref=e129]:
+          - img [ref=e130]
+          - text: limpar seleção
+        - button "marcar seleção" [disabled] [ref=e132]:
+          - img [ref=e133]
+          - text: marcar seleção
+        - button "ocultar seleção" [disabled] [ref=e135]:
+          - img [ref=e136]
+          - text: ocultar seleção
+        - button "restaurar ocultas" [disabled] [ref=e141]:
+          - img [ref=e142]
+          - text: restaurar ocultas
+        - button "exportar seleção txt" [disabled] [ref=e147]:
+          - img [ref=e148]
+          - text: exportar seleção txt
+        - button "exportar seleção json" [disabled] [ref=e151]:
+          - img [ref=e152]
+          - text: exportar seleção json
+        - button "copiar payload IA" [disabled] [ref=e156]:
+          - img [ref=e157]
+          - text: copiar payload IA
+        - button "salvar visíveis txt" [disabled] [ref=e159]:
+          - img [ref=e160]
+          - text: salvar visíveis txt
+        - button "salvar visíveis json" [disabled] [ref=e163]:
+          - img [ref=e164]
+          - text: salvar visíveis json
+      - generic [ref=e168]:
+        - img [ref=e169]
+        - generic [ref=e171]: Selecione uma pasta local para começar
+        - generic [ref=e172]: O sistema lê os arquivos .log diretamente da pasta que você escolher e libera busca, filtros, marcações e exportação para IA.
+    - complementary [ref=e173]:
+      - generic [ref=e174]:
+        - generic [ref=e175]: Resumo do arquivo
+        - generic [ref=e176]: Nenhum arquivo carregado.
+      - generic [ref=e177]:
+        - generic [ref=e178]: Módulos com mais impacto
+        - generic [ref=e180]: Sem módulos suficientes para ranking.
+      - generic [ref=e181]:
+        - generic [ref=e182]: Padrões de reject / falha
+        - generic [ref=e184]: Nenhum padrão recorrente encontrado.
+      - generic [ref=e185]:
+        - generic [ref=e186]: Alertas recentes
+        - generic [ref=e188]: Nenhum warning/error recente.
+      - generic [ref=e189]:
+        - generic [ref=e190]: Ações rápidas para análise
+        - generic [ref=e191]:
+          - button "copiar linhas visíveis" [disabled] [ref=e192]:
+            - img [ref=e193]
+            - text: copiar linhas visíveis
+          - button "copiar ids marcados" [disabled] [ref=e196]:
+            - img [ref=e197]
+            - text: copiar ids marcados
+          - button "focar busca" [ref=e200] [cursor=pointer]:
+            - img [ref=e201]
+            - text: focar busca
