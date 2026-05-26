@@ -821,7 +821,7 @@ export default function LogDashboard() {
 
   return (
     <div className="h-screen overflow-hidden bg-[#070709] text-zinc-100">
-      <input ref={folderInputRef} type="file" multiple className="hidden" onChange={handleFolderChange} />
+      <input ref={folderInputRef} type="file" multiple webkitdirectory="" className="hidden" onChange={handleFolderChange} />
       <input ref={filterImportRef} type="file" accept=".json" className="hidden" onChange={handleImportFilters} />
 
       <div className="fixed inset-0 opacity-25" style={{ backgroundImage: "linear-gradient(to right, #101014 1px, transparent 1px), linear-gradient(to bottom, #101014 1px, transparent 1px)", backgroundSize: "36px 36px" }} />
@@ -880,11 +880,11 @@ export default function LogDashboard() {
 
               <div className="min-h-0 flex-1 overflow-auto px-2 py-3">
                 {fileTree.length === 0 ? (
-                  <div className="mx-2 rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-8 text-center">
+                  <button onClick={() => folderInputRef.current?.click()} className="mx-2 w-[calc(100%-16px)] rounded-xl border border-dashed border-zinc-800 bg-zinc-950/70 px-4 py-8 text-center transition-colors hover:border-zinc-700 hover:bg-zinc-950">
                     <Upload className="mx-auto h-5 w-5 text-zinc-600" />
                     <div className="mt-3 text-sm text-zinc-300">Selecione uma pasta com logs.</div>
                     <div className="mt-2 text-xs text-zinc-500">A estrutura será exibida como uma árvore expansível.</div>
-                  </div>
+                  </button>
                 ) : (
                   fileTree.map((node) => (
                     <TreeNodeView
