@@ -42,7 +42,7 @@ const SEARCH_MODES: SearchMode[] = ["smart", "text", "regex"]
 const FILTER_STORAGE_KEY = "log-analyzer.custom-filters"
 const SEARCH_HISTORY_STORAGE_KEY = "log-analyzer.search-history"
 const SAVED_SEARCH_STORAGE_KEY = "log-analyzer.saved-searches"
-const INITIAL_VISIBLE_ROWS = Infinity
+const INITIAL_VISIBLE_ROWS = 1_000_000
 
 function formatFileSize(bytes: number): string {
   if (bytes < 1024) {

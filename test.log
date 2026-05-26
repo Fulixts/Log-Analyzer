@@ -1,0 +1,4 @@
+INFO	2024-01-15T10:30:45.123	ThreadA	ModuleX	CODE001	SourceFile.js	Application started successfully
+DEBUG	2024-01-15T10:30:46.234	ThreadB	ModuleY	CODE002	Config.js	Loading configuration
+WARNING	2024-01-15T10:30:47.345	ThreadA	ModuleX	CODE003	Parser.js	Deprecated method used
+ERROR	2024-01-15T10:30:48.456	ThreadC	ModuleZ	CODE004	Database.js	Connection failed: timeout
